@@ -24,16 +24,22 @@ public class LambdaWorker
 		{
 			try
 			{
+				String job = new String(rec.getKinesis().getData().array());
+				System.out.println(job);
+				// Extract job information
+				// Send the job id with status to the ACK Kinesis stream
+
+				// ACK that the job is now running
+
+				// Actually run the job
+
+				// ACK that the job is now complete
+				// Send the job id with status to the ACK Kinesis stream
 			} catch (Exception e)
 			{
 				System.out.println(e.getMessage());
 				e.printStackTrace();
 			}
 		}
-	}
-
-
-	public void mergeHandler(KinesisEvent event)
-	{
 	}
 }
