@@ -1,81 +1,139 @@
-package net.qyjohn.dewev3;
+package net.qyjohn.dewev3.manager;
 
-import java.util.HashSet;
-import java.util.LinkedList;
+import java.io.*;
+import java.nio.*;
+import java.util.*;
+import com.amazonaws.services.s3.*;
+import com.amazonaws.services.s3.model.*;
+import com.amazonaws.services.kinesis.*;
+import com.amazonaws.services.kinesis.model.*;
 
 public class WorkflowScheduler extends Thread
 {
-	String uuid;
-	Workflow wf;
+	public AmazonKinesisClient client;
+	String jobStream, ackStream;
+	List<Shard> ackShards = new ArrayList<Shard>();
+	Map<String, String> ackIterators = new HashMap<String, String>();
+
+	Workflow workflow;
+	String uuid, s3Bucket, s3Prefix;
 	int timeout;
-	String uuid, projectPath;
-	HashSet<String> initialSet, pendingSet, runningSet;
-	String jobInfo;
 	boolean completed;
 	
-	public WorkflowScheduler(FoxDB db, String id, PushMQ m, String path, int t)
+	public WorkflowScheduler(String bucket, String prefix, int t)
 	{
-		database = db;
-		uuid = id;
-		projectPath = path;
-		mq = m;
-		timeout = t;
-		
-		completed  = false;
-		initialSet = new HashSet<String>();	// dependency not met
-		pendingSet = new HashSet<String>();	// dependency met, waiting for execution
-		runningSet = new HashSet<String>();	// running
-		
-		wf = new Workflow(path, timeout);
+		try
+		{
+			// The Kinesis stream to publish jobs
+			Properties prop = new Properties();
+			InputStream input = WorkflowScheduler.class.getResourceAsStream("/stream.properties");
+			prop.load(input);
+			jobStream = prop.getProperty("jobStream");
+	
+			// Each instance of WorkflowScheduler is a single thread, managing a single workflow.
+			// A workflow is represented by a UUID, and the ACK stream is named with the same UUID.
+			uuid = UUID.randomUUID().toString();
+			ackStream = uuid;
+			client = new AmazonKinesisClient();
+			createAckStream();	// The Kinesis stream to receive ACK messages 
+			listAckShards();
+	
+			s3Bucket = bucket;
+			s3Prefix = prefix;
+			timeout = t;
+			
+			workflow = new Workflow(uuid, s3Bucket, s3Prefix, timeout);
+			completed  = false;
+		} catch (Exception e)
+		{
+			System.out.println(e.getMessage());
+			e.printStackTrace();				
+		}
 	}
 	
-	public synchronized void addRecord(String set, String jobId)
+
+	public void createAckStream()
 	{
-		if (set.equals("initial"))
+		// Creating the stream
+		CreateStreamRequest createStreamRequest = new CreateStreamRequest();
+		createStreamRequest.setStreamName(ackStream);
+		createStreamRequest.setShardCount(1);
+		client.createStream(createStreamRequest);
+
+		DescribeStreamRequest describeStreamRequest = new DescribeStreamRequest();
+		describeStreamRequest.setStreamName(ackStream);
+		long startTime = System.currentTimeMillis();
+		long endTime = startTime + ( 10 * 60 * 1000 );
+		while ( System.currentTimeMillis() < endTime ) 
 		{
-			initialSet.add(jobId);
+			try 
+			{
+				System.out.println("Waiting for ACK stream " + uuid + " to become active...");
+				Thread.sleep(10 * 1000);
+				DescribeStreamResult describeStreamResponse = client.describeStream( describeStreamRequest );
+				String streamStatus = describeStreamResponse.getStreamDescription().getStreamStatus();
+				if ( streamStatus.equals( "ACTIVE" ) ) 
+				{
+					break;
+				}
+			} catch (Exception e ) {}
 		}
-		else if (set.equals("pending"))
+		
+		if ( System.currentTimeMillis() >= endTime ) 
 		{
-			pendingSet.add(jobId);			
+			System.out.println("ACK stream " + uuid + " never becomes active. Exiting...");
+			System.exit(0);
 		}
-		else if (set.equals("running"))
-		{
-			runningSet.add(jobId);			
-		}		
 	}
-	
-	public synchronized void delRecord(String set, String jobId)
+
+	public void listAckShards()
 	{
-		if (set.equals("initial"))
+		DescribeStreamRequest describeStreamRequest = new DescribeStreamRequest();
+		describeStreamRequest.setStreamName(ackStream);
+		String exclusiveStartShardId = null;
+		do 
 		{
-			initialSet.remove(jobId);
+			describeStreamRequest.setExclusiveStartShardId( exclusiveStartShardId );
+			DescribeStreamResult describeStreamResult = client.describeStream( describeStreamRequest );
+			ackShards.addAll( describeStreamResult.getStreamDescription().getShards() );
+			if (describeStreamResult.getStreamDescription().getHasMoreShards() && ackShards.size() > 0) 
+			{
+				exclusiveStartShardId = ackShards.get(ackShards.size() - 1).getShardId();
+			} 
+			else 
+			{
+				exclusiveStartShardId = null;
+			}
+		} while ( exclusiveStartShardId != null );
+
+		for (Shard shard : ackShards)
+		{
+			String shardId = shard.getShardId();
+			String shardIterator;
+			GetShardIteratorRequest getShardIteratorRequest = new GetShardIteratorRequest();
+			getShardIteratorRequest.setStreamName(ackStream);
+			getShardIteratorRequest.setShardId(shardId);
+			getShardIteratorRequest.setShardIteratorType("TRIM_HORIZON");
+
+			GetShardIteratorResult getShardIteratorResult = client.getShardIterator(getShardIteratorRequest);
+			shardIterator = getShardIteratorResult.getShardIterator();			
+			ackIterators.put(shardId, shardIterator);
 		}
-		else if (set.equals("pending"))
-		{
-			pendingSet.remove(jobId);			
-		}
-		else if (set.equals("running"))
-		{
-			runningSet.remove(jobId);			
-		}		
+	}
+
+	
+	public void deleteAckStream()
+	{
+		client.deleteStream(uuid);	
 	}
 	
 	public void initialDispatch()
 	{
-		for (WorkflowJob job : wf.initialJobs.values())	
+		for (WorkflowJob job : workflow.jobs.values())	
 		{
 			if (job.ready)
 			{
-//				pendingSet.add(job.jobId);
-				addRecord("pending", job.jobId);
-				jobInfo = createJobInfo(job.jobId, job.jobCommand);
-				mq.pushMQ(jobInfo);
-			}
-			else
-			{
-//				initialSet.add(job.jobId);
-				addRecord("initial", job.jobId);
+				dispatchJob(job.jobId);
 			}
 		}	
 	}
@@ -83,153 +141,116 @@ public class WorkflowScheduler extends Thread
 	
 	/**
 	 *
-	 * Dispatch a single job from the initialJobs HashSet to the queueJobs HashSet. Jobs in the queueJobs HashSet will be
-	 * pulled by the worker nodes for execution.
+	 * Publishing a job to the jobStream for the worker node (a Lambda function) to pickup.
 	 *
 	 */
 	 
-	public synchronized void dispatchJob(String id)
+	public void dispatchJob(String id)
 	{
-		if (initialSet.contains(id))
-		{
-			WorkflowJob job = wf.initialJobs.get(id);
-			jobInfo = createJobInfo(job.jobId, job.jobCommand);
-			mq.pushMQ(jobInfo);	
-//			initialSet.remove(id);
-//			pendingSet.add(id);
-			delRecord("initial", id);
-			addRecord("pending", id);
-		}		
-	}
-	
-	
-	/**
-	 *
-	 * The worker node sends an ACK message to the AckMQ, indicating a particular job is now running. 
-	 * Move the job from queueJobs HashMap to runningJobs HashMap
-	 *
-	 */
-	 
-	public synchronized void setJobAsRunning(String id, String worker)
-	{
-		if (pendingSet.contains(id))
-		{
-//			System.out.println(uuid + ":\t" + id + " is running on worker " + worker + ".");
-			long current = System.currentTimeMillis() / 1000L;
-			WorkflowJob job = wf.initialJobs.get(id);
-			job.start_time = current;
+		WorkflowJob job = workflow.jobs.get(id);
 
-//			pendingSet.remove(id);
-//			runningSet.add(id);
-			delRecord("pending", id);
-			addRecord("running", id);
-//			database.update_job_running(uuid, id, worker);
+		if (job != null)
+		{
+			System.out.println("\n\nDispatching " + job.jobId + "\t" + job.jobName+ "\t" + job.ready);
+			System.out.println(job.jobXML);
+
+			byte[] bytes = job.jobXML.getBytes();
+			PutRecordRequest putRecord = new PutRecordRequest();
+			putRecord.setStreamName(jobStream);
+			putRecord.setPartitionKey(UUID.randomUUID().toString());
+			putRecord.setData(ByteBuffer.wrap(bytes));
+
+			try 
+			{
+				client.putRecord(putRecord);
+			} catch (Exception e) 
+			{
+				System.out.println(e.getMessage());
+				e.printStackTrace();	
+			}
 		}		
 	}
 	
 	
 	/**
 	 *
-	 * The worker node sends an ACK message to the AckMQ, indicating a particular job is now complete.
-	 * There are several things to process, including:
-	 * (1) obtain a list of the output files of this particular job
-	 * (2) for each output file, find the jobs that depend on this output file
-	 * (3) for each job that depends on this output file, check if it is now ready to run, and dispatch it if it is ready
-	 * (4) move the job from runningJobs HashMap to completeJobs HashMap.
+	 * The worker node (a Lambda function) sends an ACK message to the ackStream, indicating a particular job is now complete.
 	 *
 	 */
 	 
-	public synchronized void setJobAsComplete(String id, String worker)
+	public void setJobAsComplete(String id)
 	{		
-		if (runningSet.contains(id))
+		WorkflowJob job = workflow.jobs.get(id);
+
+		if (job != null)
 		{
-//			runningSet.remove(id);
-			delRecord("running", id);
-//			database.update_job_completed(uuid, id);
-			
-			WorkflowJob job = wf.initialJobs.get(id);
-			
 			// Get a list of the children jobs
 			for (String child_id : job.childrenJobs) 
 			{
 				// Get a list of the jobs depending on a particular output file
-				WorkflowJob childJob = wf.initialJobs.get(child_id);
+				WorkflowJob childJob = workflow.jobs.get(child_id);
 				// Remove this depending parent job
 				childJob.removeParent(id);
 				if (childJob.ready)
 				{
-					// No more pending input files, this job is now ready to go
-//					System.out.println(uuid + ":\t" + childJob.jobId + " is now ready to go. Dispatching...");
 					dispatchJob(childJob.jobId);
 				}
 			}
-			
-			// Delete this job from initialJobs
-			wf.initialJobs.remove(id);
-			
-			
-			// Check if the workflow is completed
-			if ((initialSet.size() == 0) && (pendingSet.size() == 0) && (runningSet.size() == 0))
-			{				
-				completed = true;
-				initialSet = null;
-				pendingSet = null;
-				runningSet = null;
-				wf = null;
-				
-//				System.out.println(uuid + ":\t" +  "[COMPLETED]");
-				database.update_workflow(uuid, "completed");
-			}						
-		}		
-
+			workflow.jobs.remove(id);
+		}	
 		
-	}
-	
-	
-	/**
-	 *
-	 * After a worker takes a particular job for a certain time, but does not ACK this job as complete, the
-	 * job is considered as "timeout". Need to dispatch the job again so that another worker node can process
-	 * it a second time.
-	 *
-	 * Remove the job from the runningJobs HashMap, need to pushMQ, and put it back to the queueJobs HashMap.
-	 *
-	 */
-	 
-	public synchronized void handleJobTimeout(String id)
-	{
-		if (runningSet.contains(id))
+		if (workflow.isEmpty())
 		{
-//			runningSet.remove(id);
-//			pendingSet.add(id);
-			delRecord("running", id);
-			addRecord("pending", id);
-			
-			WorkflowJob job = wf.initialJobs.get(id);
-			jobInfo = createJobInfo(job.jobId, job.jobCommand);
-			mq.pushMQ(jobInfo);						
-			long   unixTime;
-			unixTime = System.currentTimeMillis() / 1000L;
-			System.out.println(unixTime + "\t" + uuid + ":\t" + id + " is now re-submit for execution.");
-		}		
+			completed = true;
+		}	
 	}
-	
 	
 	/**
 	 *
-	 * Create an MQ message to be pushed to the job queue
+	 * The run() method.
 	 *
 	 */
 	 
-	public String createJobInfo(String id, String command)
+	public void run()
 	{
-		String info = "<job project='" + uuid + "' id='" + id + "' path='" + projectPath + "'>\n";
-		info = info + "<command>\n";
-		info = info + command + "\n";
-		info = info + "</command>\n";
-		info = info + "</job>";
+		while (!completed)
+		{
+			// Listen for ackStream for completed jobs and update job status
+			for (Shard shard : ackShards)
+			{
+				String shardId = shard.getShardId();
+				GetRecordsRequest getRecordsRequest = new GetRecordsRequest();
+				getRecordsRequest.setShardIterator(ackIterators.get(shardId));
+				getRecordsRequest.setLimit(100);
 
-		return info;		
+				GetRecordsResult getRecordsResult = client.getRecords(getRecordsRequest);
+				List<Record> records = getRecordsResult.getRecords();
+				for (Record record : records)
+				{
+					String job = new String(record.getData().array());
+					System.out.println(job + " is now completed.");
+					setJobAsComplete(job);
+				}
+
+				ackIterators.put(shardId, getRecordsResult.getNextShardIterator());
+			}
+		}
 	}
+
+	public static void main(String[] args)
+	{
+		try
+		{
+			WorkflowScheduler scheduler = new WorkflowScheduler(args[0], args[1], 100);
+			scheduler.initialDispatch();
+			scheduler.run();
+			scheduler.deleteAckStream();
+		} catch (Exception e)
+		{
+			System.out.println(e.getMessage());
+			e.printStackTrace();
+		}
+	}
+
 }
 

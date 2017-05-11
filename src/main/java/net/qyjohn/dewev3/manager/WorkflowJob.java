@@ -1,4 +1,4 @@
-package net.qyjohn.dewev3;
+package net.qyjohn.dewev3.manager;
 
 import java.util.HashSet;
 

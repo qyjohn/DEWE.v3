@@ -1,11 +1,8 @@
-package net.qyjohn.dewev3;
+package net.qyjohn.dewev3.manager;
 
 import java.io.*;
-import java.net.*;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.List;
-import java.util.StringTokenizer;
-import java.util.Iterator;
+import java.util.*;
 
 import org.dom4j.Document;
 import org.dom4j.Element;
@@ -13,19 +10,15 @@ import org.dom4j.Node;
 import org.dom4j.DocumentException;
 import org.dom4j.io.SAXReader;
 
-
-//import com.amazonaws.*;
-//import com.amazonaws.auth.*;
-//import com.amazonaws.auth.profile.*;
 import com.amazonaws.regions.*;
 import com.amazonaws.services.s3.*;
 import com.amazonaws.services.s3.model.*;
 
 public class Workflow
 {
-        public AmazonS3Client client;
-	public ConcurrentHashMap<String, WorkflowJob> initialJobs, queueJobs, runningJobs;
-	public String s3Bucket, s3Prefix;
+	public AmazonS3Client client;
+	public ConcurrentHashMap<String, WorkflowJob> jobs;
+	public String uuid, s3Bucket, s3Prefix;
 	public SAXReader reader;
 	public Document document;
 	public int timeout = 100;
@@ -37,19 +30,20 @@ public class Workflow
 	 *
 	 */
 	 
-	public Workflow(String bucket, String prefix)
+	public Workflow(String uuid, String bucket, String prefix, int t)
 	{
+		this.uuid = uuid;
+		
 		this.s3Bucket = bucket;
 		this.s3Prefix = prefix;
-                client = new AmazonS3Client();
+		timeout = t;
+		client = new AmazonS3Client();
 		reader = new SAXReader();
 		
 		try
 		{
 			// Initialize the HashMap for workflow jobs
-			initialJobs = new ConcurrentHashMap<String, WorkflowJob>();
-			queueJobs = new ConcurrentHashMap<String, WorkflowJob>();
-			runningJobs = new ConcurrentHashMap<String, WorkflowJob>();
+			jobs = new ConcurrentHashMap<String, WorkflowJob>();
 			parseDocument();
 			parseWorkflow();	
 		} catch (Exception e)
@@ -57,6 +51,11 @@ public class Workflow
 			System.out.println(e.getMessage());	
 			e.printStackTrace();
 		}
+	}
+	
+	public boolean isEmpty()
+	{
+		return jobs.isEmpty();
 	}
 	
 	/**
@@ -110,8 +109,8 @@ public class Workflow
 		for (Element parent: parents)
 		{
 			String parent_id = parent.attribute("ref").getValue();
-			initialJobs.get(child_id).addParent(parent_id);
-			initialJobs.get(parent_id).addChild(child_id);
+			jobs.get(child_id).addParent(parent_id);
+			jobs.get(parent_id).addChild(child_id);
 		}
 	}
 
@@ -126,10 +125,10 @@ public class Workflow
 	{
 		String id = job.attribute("id").getValue();
 		String name = job.attribute("name").getValue();
+		job.addAttribute("workflow", uuid);
+		job.addAttribute("bucket", s3Bucket);
+		job.addAttribute("prefix", s3Prefix);
 		
-		System.out.println("\n\n" + id + "\t" + name);
-		System.out.println(job.asXML());
-
 		WorkflowJob wlj = new WorkflowJob(id, name, job.asXML(), timeout);
 		Element args = job.element("argument");
 		
@@ -154,14 +153,14 @@ public class Workflow
             }
 		}
 	
-		initialJobs.put(id, wlj);
+		jobs.put(id, wlj);
 	}
 
 	public static void main(String[] args)
 	{
 		try
 		{
-			Workflow wf = new Workflow(args[0], args[1]);
+			Workflow wf = new Workflow("Test-UUID-Haha", args[0], args[1], 100);
 		} catch (Exception e)
 		{
 			System.out.println(e.getMessage());
