@@ -1,0 +1,22 @@
+#!/bin/bash
+#
+# Generate a Montage workflow for DEWE v3
+# The only argument is the degree
+#
+# usage: generate_montage_input 0.25
+#
+mkdir -p Montage_$1/workdir
+cp -r ~/Montage/bin Montage_$1/bin
+cd Montage_$1/workdir
+mDAG 2mass j M17 $1 $1 0.0002777778 . file://$PWD file://$PWD/inputs
+cat cache.list | grep -v ".fits " >replica.catalog
+perl -p -i -e 's/ipac_cluster/local/' replica.catalog
+cat url.list | sed 's/ http:.*ref=/ http:\/\/obelix.isi.edu\/irsa-cache/' >>replica.catalog
+mArchiveExec images.tbl
+gunzip *.gz
+mv dag.xml ../
+more replica.catalog | grep local | while read line ; do 
+    src=$(echo $line | awk '{print $2;}' | awk -F "/" '{print $NF}')
+    dest=$(echo $line | awk '{print $1;}')
+    cp $src $dest
+done

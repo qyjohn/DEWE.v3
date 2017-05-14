@@ -167,33 +167,7 @@ public class Workflow
 		element.addAttribute("bucket", s3Bucket);
 		element.addAttribute("prefix", s3Prefix);
 		
-		WorkflowJob job = new WorkflowJob(id, name, element.asXML());
-		/*
-		Element args = job.element("argument");
-		
-		Node node;
-		Element e;
-		StringTokenizer st;
-		for ( int i = 0, size = args.nodeCount(); i < size; i++ )
-		{
-			node = args.node(i);
-			if ( node instanceof Element ) 
-			{
-				// The argument is a filename
-                e = (Element) node;
-                wlj.addArgument(e.attribute("name").getValue());
-            }
-            else
-            {
-	            st = new StringTokenizer(node.getText().trim());
-				while (st.hasMoreTokens()) 
-				{
-					wlj.addArgument(st.nextToken());
-				}
-            }
-		}
-	*/
-	
+		WorkflowJob job = new WorkflowJob(id, name, element.asXML());	
 		if (longJobs.contains(name))
 		{
 			job.setLongJob(true);
