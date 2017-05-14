@@ -20,18 +20,33 @@ public class DeweWorker extends Thread
 	public AmazonKinesisClient kinesisClient;
 	public String workflow, bucket, prefix, jobId, jobName, command;
 	public String tempDir = "/tmp";
-	// Long running jobs
+	// For long running jobs
 	volatile boolean completed = false;
 	String longStream;
 	List<Shard> longShards = new ArrayList<Shard>();
 	Map<String, String> longIterators = new HashMap<String, String>();
 
+
+	/**
+	 *
+	 * Constructor for Lambda function. 
+	 * In this case, the long running job stream is not needed.
+	 *
+	 */
+	 
 	public DeweWorker()
 	{
 		s3Client = new AmazonS3Client();
 		kinesisClient = new AmazonKinesisClient();
 	}
 	
+	/**
+	 *
+	 * Constructor for worker node handling long running jobs. 
+	 * In this case, the long running job stream is needed.
+	 *
+	 */
+
 	public DeweWorker(String longStream)
 	{
 		this.longStream = longStream;
@@ -40,6 +55,12 @@ public class DeweWorker extends Thread
 		listLongShards();
 	}
 	
+	/**
+	 *
+	 * The long running job handler receives jobs from a separate Kinesis stream.
+	 *
+	 */
+
 	public void listLongShards()
 	{
 		DescribeStreamRequest describeStreamRequest = new DescribeStreamRequest();
@@ -76,6 +97,12 @@ public class DeweWorker extends Thread
 	}
 
 	
+	/**
+	 *
+	 * When the job handler runs on an EC2 instance, it is a function triggered by Lambda.
+	 *
+	 */
+
 	public void lambdaHandler(KinesisEvent event)
 	{
 		for(KinesisEvent.KinesisEventRecord rec : event.getRecords())
@@ -134,11 +161,25 @@ public class DeweWorker extends Thread
 		}		
 	}
 	
+	
+	/**
+	 *
+	 * Mark the workflow as completed. This is used for the EC2 job handler to exit gracefully.
+	 *
+	 */
+	 
 	public void setAsCompleted()
 	{
 		completed = true;
 	}
 	
+	
+	/**
+	 *
+	 * The method to execute a single job.
+	 *
+	 */
+
 	public void executeJob(String jobXML)
 	{
 			try
@@ -255,6 +296,12 @@ public class DeweWorker extends Thread
 			}
 	}
 	
+	/**
+	 *
+	 * Download binary and input data from S3 to the execution folder.
+	 *
+	 */
+	 
 	public void download(int type, String filename)
 	{
 		String key=null, outfile = null;
@@ -285,6 +332,12 @@ public class DeweWorker extends Thread
 		}
 	}
 
+	/**
+	 *
+	 * Upload output data to S3
+	 *
+	 */
+	 
 	public void upload(String filename)
 	{
 		String key  = prefix + "/workdir/" + filename;

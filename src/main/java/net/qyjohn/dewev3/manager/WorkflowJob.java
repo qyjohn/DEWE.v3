@@ -7,7 +7,7 @@ public class WorkflowJob
 	public String jobId, jobName, jobXML, jobCommand;	// job id and job name
 	public HashSet<String>	parentJobs, childrenJobs;
 	public boolean ready;
-	public boolean isLongJob = true;
+	public boolean isLongJob = false;
 
 	/**
 	 *
