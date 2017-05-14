@@ -104,25 +104,32 @@ public class DeweWorker extends Thread
 	{
 		while (!completed)
 		{
-			// Listen for longStream for jobs to execute
-			for (Shard shard : longShards)
+			try
 			{
-				String shardId = shard.getShardId();
-				GetRecordsRequest getRecordsRequest = new GetRecordsRequest();
-				getRecordsRequest.setShardIterator(longIterators.get(shardId));
-				getRecordsRequest.setLimit(100);
-
-				GetRecordsResult getRecordsResult = kinesisClient.getRecords(getRecordsRequest);
-				List<Record> records = getRecordsResult.getRecords();
-				for (Record record : records)
+				// Listen for longStream for jobs to execute
+				for (Shard shard : longShards)
 				{
-					String jobXML = new String(record.getData().array());
-					// For each job, create a temp folder under /tmp
-					tempDir = tempDir + "/" + UUID.randomUUID().toString();
-					executeJob(jobXML);
+					String shardId = shard.getShardId();
+					GetRecordsRequest getRecordsRequest = new GetRecordsRequest();
+					getRecordsRequest.setShardIterator(longIterators.get(shardId));
+					getRecordsRequest.setLimit(100);
+	
+					GetRecordsResult getRecordsResult = kinesisClient.getRecords(getRecordsRequest);
+					List<Record> records = getRecordsResult.getRecords();
+					for (Record record : records)
+					{
+						String jobXML = new String(record.getData().array());
+						// For each job, create a temp folder under /tmp
+						tempDir = tempDir + "/" + UUID.randomUUID().toString();
+						executeJob(jobXML);
+					}
+	
+					longIterators.put(shardId, getRecordsResult.getNextShardIterator());
 				}
-
-				longIterators.put(shardId, getRecordsResult.getNextShardIterator());
+			} catch (ResourceNotFoundException e)
+			{
+				// The longStream has been deleted. The workflow has completed execution
+				completed = true;
 			}
 		}		
 	}

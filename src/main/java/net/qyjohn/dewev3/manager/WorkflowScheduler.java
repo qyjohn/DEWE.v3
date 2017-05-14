@@ -8,6 +8,7 @@ import com.amazonaws.services.s3.model.*;
 import com.amazonaws.services.kinesis.*;
 import com.amazonaws.services.kinesis.model.*;
 import net.qyjohn.dewev3.worker.*;
+import org.apache.log4j.Logger;
 
 public class WorkflowScheduler extends Thread
 {
@@ -22,6 +23,7 @@ public class WorkflowScheduler extends Thread
 	boolean completed;
 	
 	DeweWorker worker;
+	final static Logger logger = Logger.getLogger(WorkflowScheduler.class);
 	
 	public WorkflowScheduler(String bucket, String prefix)
 	{
@@ -45,6 +47,7 @@ public class WorkflowScheduler extends Thread
 	
 			s3Bucket = bucket;
 			s3Prefix = prefix;			
+			logger.info("Parsing workflow definitions...");
 			workflow = new Workflow(uuid, s3Bucket, s3Prefix);
 			completed  = false;
 			
@@ -75,7 +78,7 @@ public class WorkflowScheduler extends Thread
 		{
 			try 
 			{
-				System.out.println("Waiting for stream " + stream + " to become active...");
+				logger.info("Waiting for stream " + stream + " to become active...");
 				Thread.sleep(10 * 1000);
 				DescribeStreamResult describeStreamResponse = client.describeStream( describeStreamRequest );
 				String streamStatus = describeStreamResponse.getStreamDescription().getStreamStatus();
@@ -88,7 +91,7 @@ public class WorkflowScheduler extends Thread
 		
 		if ( System.currentTimeMillis() >= endTime ) 
 		{
-			System.out.println("Stream " + stream + " never becomes active. Exiting...");
+			logger.error("Stream " + stream + " never becomes active. Exiting...");
 			System.exit(0);
 		}
 	}
@@ -136,6 +139,7 @@ public class WorkflowScheduler extends Thread
 	
 	public void initialDispatch()
 	{
+		logger.info("Begin workflow execution.");
 		for (WorkflowJob job : workflow.jobs.values())	
 		{
 			if (job.ready)
@@ -158,7 +162,7 @@ public class WorkflowScheduler extends Thread
 
 		if (job != null)
 		{
-			System.out.println("\n\nDispatching " + job.jobId + "\t" + job.jobName+ "\t" + job.ready);
+			logger.info("Dispatching " + job.jobId + ":\t" + job.jobName);
 
 			byte[] bytes = job.jobXML.getBytes();
 			PutRecordRequest putRecord = new PutRecordRequest();
@@ -241,21 +245,21 @@ public class WorkflowScheduler extends Thread
 				for (Record record : records)
 				{
 					String job = new String(record.getData().array());
-					System.out.println(job + " is now completed.");
+					logger.info(job + " is now completed.");
 					setJobAsComplete(job);
 				}
 
 				ackIterators.put(shardId, getRecordsResult.getNextShardIterator());
 			}
 		}
-		
+		logger.info("Workflow is now completed.");
 		// After the workflow is completed, stop the worker
-		worker.setAsCompleted();
+//		worker.setAsCompleted();
 		// Sleep 5 seconds for the worker to shutdown gracefully.
-		try
-		{
-			Thread.sleep(5000);
-		} catch (Exception e){}
+//		try
+//		{
+//			Thread.sleep(5000);
+//		} catch (Exception e){}
 		
 		//delete the ackStream and the longString.
 		deleteStream(ackStream);
