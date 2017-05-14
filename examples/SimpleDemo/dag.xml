@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<adag xmlns="http://pegasus.isi.edu/schema/DAX"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:schemaLocation="http://pegasus.isi.edu/schema/DAX http://pegasus.isi.edu/schema/dax-2.1.xsd"
+      version="2.1" count="1" index="0" name="montage">
+
+  <!-- Part 1:  Files Used -->
+
+  <filename file="a.dat" link="inout"/>
+  <filename file="b.dat" link="inout"/>
+  <filename file="c.dat" link="output"/>
+
+  <!-- Part 2:  Definition of Jobs -->
+
+  <job id="ID000001" name="Sleep">
+    <argument>
+    </argument>
+  </job>
+
+  <job id="ID000002" name="SleepRecord">
+    <argument>
+      <filename file="a.dat"/>
+    </argument>
+
+    <uses file="a.dat" link="output" transfer="true"/>
+  </job>
+
+  <job id="ID000003" name="SleepRecord">
+    <argument>
+      <filename file="b.dat"/>
+    </argument>
+
+    <uses file="b.dat" link="output" transfer="true"/>
+  </job>
+
+  <job id="ID000004" name="Add">
+    <argument>
+      <filename file="a.dat"/>
+      <filename file="b.dat"/>
+      <filename file="c.dat"/>
+    </argument>
+
+    <uses file="a.dat" link="input" transfer="true"/>
+    <uses file="b.dat" link="input" transfer="true"/>
+    <uses file="c.dat" link="output" transfer="false"/>
+  </job>
+
+  <!-- Part 3:  Precedence Requirements -->
+
+  <child ref="ID000002">
+    <parent ref="ID000001"/>
+  </child>
+
+  <child ref="ID000003">
+    <parent ref="ID000001"/>
+  </child>
+
+  <child ref="ID000004">
+    <parent ref="ID000002"/>
+    <parent ref="ID000003"/>
+  </child>
+
+</adag>
