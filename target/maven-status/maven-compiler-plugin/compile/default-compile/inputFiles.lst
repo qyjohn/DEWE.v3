@@ -2,3 +2,4 @@
 /efs/DEWE.v3/src/main/java/net/qyjohn/dewev3/manager/WorkflowJob.java
 /efs/DEWE.v3/src/main/java/net/qyjohn/dewev3/worker/LambdaWorker.java
 /efs/DEWE.v3/src/main/java/net/qyjohn/dewev3/manager/Workflow.java
+/efs/DEWE.v3/src/main/java/net/qyjohn/dewev3/worker/DeweWorker.java

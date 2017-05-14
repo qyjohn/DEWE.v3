@@ -7,8 +7,7 @@ public class WorkflowJob
 	public String jobId, jobName, jobXML, jobCommand;	// job id and job name
 	public HashSet<String>	parentJobs, childrenJobs;
 	public boolean ready;
-	long start_time = 1L;	// default start time, indicating the job has not been started
-	int timeout = 1;
+	public boolean isLongJob = true;
 
 	/**
 	 *
@@ -16,7 +15,7 @@ public class WorkflowJob
 	 *
 	 */
 
-	public WorkflowJob(String id, String name, String xml, int t)
+	public WorkflowJob(String id, String name, String xml)
 	{
 		jobId = id;
 		jobName = name;
@@ -24,12 +23,15 @@ public class WorkflowJob
 		jobCommand = name;
 		parentJobs = new HashSet<String>();
 		childrenJobs = new HashSet<String>();
-		timeout = t;
 		
 		// By default this job is ready to go, unless we find out that it has parents!
 		ready = true;
 	}
 	
+	public void setLongJob(boolean type)
+	{
+		isLongJob = type;	
+	}
 	
 	/**
 	 *
@@ -80,32 +82,6 @@ public class WorkflowJob
 		{
 			ready = true;
 		}
-	}
-
-	
-	/**
-	 * 
-	 * toString method
-	 *
-	 */
-	 
-	public String toString()
-	{
-		String str = jobId + "\t" + jobName;	// Job ID and name
-		if (ready)
-		{
-			str = str + "\t (ready)";
-		}
-		else
-		{
-			str = str + "\t (not ready)";
-		}
-		
-		str = str + "\n    " + jobCommand;
-
-		return str;
-	}
-	
-	
+	}	
 }
 

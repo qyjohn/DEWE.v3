@@ -7,11 +7,12 @@ import com.amazonaws.services.s3.*;
 import com.amazonaws.services.s3.model.*;
 import com.amazonaws.services.kinesis.*;
 import com.amazonaws.services.kinesis.model.*;
+import net.qyjohn.dewev3.worker.*;
 
 public class WorkflowScheduler extends Thread
 {
 	public AmazonKinesisClient client;
-	String jobStream, ackStream;
+	String jobStream, longStream, ackStream;
 	List<Shard> ackShards = new ArrayList<Shard>();
 	Map<String, String> ackIterators = new HashMap<String, String>();
 
@@ -20,7 +21,9 @@ public class WorkflowScheduler extends Thread
 	int timeout;
 	boolean completed;
 	
-	public WorkflowScheduler(String bucket, String prefix, int t)
+	DeweWorker worker;
+	
+	public WorkflowScheduler(String bucket, String prefix)
 	{
 		try
 		{
@@ -32,18 +35,22 @@ public class WorkflowScheduler extends Thread
 	
 			// Each instance of WorkflowScheduler is a single thread, managing a single workflow.
 			// A workflow is represented by a UUID, and the ACK stream is named with the same UUID.
-			uuid = UUID.randomUUID().toString();
+			uuid = "DEWEv3-" + UUID.randomUUID().toString();
 			ackStream = uuid;
+			longStream = ackStream + "-Long-Jobs";
 			client = new AmazonKinesisClient();
-			createAckStream();	// The Kinesis stream to receive ACK messages 
+			createStream(ackStream);	// The Kinesis stream to receive ACK messages 
+			createStream(longStream);	// The Kinesis stream to publish long running jobs 
 			listAckShards();
 	
 			s3Bucket = bucket;
-			s3Prefix = prefix;
-			timeout = t;
-			
-			workflow = new Workflow(uuid, s3Bucket, s3Prefix, timeout);
+			s3Prefix = prefix;			
+			workflow = new Workflow(uuid, s3Bucket, s3Prefix);
 			completed  = false;
+			
+			// Run one instance of the DeweWorker in the background
+			worker = new DeweWorker(longStream);
+			worker.start();
 		} catch (Exception e)
 		{
 			System.out.println(e.getMessage());
@@ -52,23 +59,23 @@ public class WorkflowScheduler extends Thread
 	}
 	
 
-	public void createAckStream()
+	public void createStream(String stream)
 	{
 		// Creating the stream
 		CreateStreamRequest createStreamRequest = new CreateStreamRequest();
-		createStreamRequest.setStreamName(ackStream);
+		createStreamRequest.setStreamName(stream);
 		createStreamRequest.setShardCount(1);
 		client.createStream(createStreamRequest);
 
 		DescribeStreamRequest describeStreamRequest = new DescribeStreamRequest();
-		describeStreamRequest.setStreamName(ackStream);
+		describeStreamRequest.setStreamName(stream);
 		long startTime = System.currentTimeMillis();
 		long endTime = startTime + ( 10 * 60 * 1000 );
 		while ( System.currentTimeMillis() < endTime ) 
 		{
 			try 
 			{
-				System.out.println("Waiting for ACK stream " + uuid + " to become active...");
+				System.out.println("Waiting for stream " + stream + " to become active...");
 				Thread.sleep(10 * 1000);
 				DescribeStreamResult describeStreamResponse = client.describeStream( describeStreamRequest );
 				String streamStatus = describeStreamResponse.getStreamDescription().getStreamStatus();
@@ -81,7 +88,7 @@ public class WorkflowScheduler extends Thread
 		
 		if ( System.currentTimeMillis() >= endTime ) 
 		{
-			System.out.println("ACK stream " + uuid + " never becomes active. Exiting...");
+			System.out.println("Stream " + stream + " never becomes active. Exiting...");
 			System.exit(0);
 		}
 	}
@@ -122,9 +129,9 @@ public class WorkflowScheduler extends Thread
 	}
 
 	
-	public void deleteAckStream()
+	public void deleteStream(String stream)
 	{
-		client.deleteStream(uuid);	
+		client.deleteStream(stream);	
 	}
 	
 	public void initialDispatch()
@@ -152,11 +159,17 @@ public class WorkflowScheduler extends Thread
 		if (job != null)
 		{
 			System.out.println("\n\nDispatching " + job.jobId + "\t" + job.jobName+ "\t" + job.ready);
-			System.out.println(job.jobXML);
 
 			byte[] bytes = job.jobXML.getBytes();
 			PutRecordRequest putRecord = new PutRecordRequest();
-			putRecord.setStreamName(jobStream);
+			if (job.isLongJob)
+			{
+				putRecord.setStreamName(longStream);				
+			}
+			else
+			{
+				putRecord.setStreamName(jobStream);
+			}
 			putRecord.setPartitionKey(UUID.randomUUID().toString());
 			putRecord.setData(ByteBuffer.wrap(bytes));
 
@@ -235,16 +248,27 @@ public class WorkflowScheduler extends Thread
 				ackIterators.put(shardId, getRecordsResult.getNextShardIterator());
 			}
 		}
+		
+		// After the workflow is completed, stop the worker
+		worker.setAsCompleted();
+		// Sleep 5 seconds for the worker to shutdown gracefully.
+		try
+		{
+			Thread.sleep(5000);
+		} catch (Exception e){}
+		
+		//delete the ackStream and the longString.
+		deleteStream(ackStream);
+		deleteStream(longStream);
 	}
 
 	public static void main(String[] args)
 	{
 		try
 		{
-			WorkflowScheduler scheduler = new WorkflowScheduler(args[0], args[1], 100);
+			WorkflowScheduler scheduler = new WorkflowScheduler(args[0], args[1]);
 			scheduler.initialDispatch();
 			scheduler.run();
-			scheduler.deleteAckStream();
 		} catch (Exception e)
 		{
 			System.out.println(e.getMessage());

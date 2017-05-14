@@ -14,6 +14,8 @@ import com.amazonaws.regions.*;
 import com.amazonaws.services.s3.*;
 import com.amazonaws.services.s3.model.*;
 
+
+
 public class Workflow
 {
 	public AmazonS3Client client;
@@ -21,7 +23,6 @@ public class Workflow
 	public String uuid, s3Bucket, s3Prefix;
 	public SAXReader reader;
 	public Document document;
-	public int timeout = 100;
 
 	
 	/**
@@ -30,13 +31,12 @@ public class Workflow
 	 *
 	 */
 	 
-	public Workflow(String uuid, String bucket, String prefix, int t)
+	public Workflow(String uuid, String bucket, String prefix)
 	{
 		this.uuid = uuid;
 		
 		this.s3Bucket = bucket;
 		this.s3Prefix = prefix;
-		timeout = t;
 		client = new AmazonS3Client();
 		reader = new SAXReader();
 		
@@ -129,7 +129,7 @@ public class Workflow
 		job.addAttribute("bucket", s3Bucket);
 		job.addAttribute("prefix", s3Prefix);
 		
-		WorkflowJob wlj = new WorkflowJob(id, name, job.asXML(), timeout);
+		WorkflowJob wlj = new WorkflowJob(id, name, job.asXML());
 		Element args = job.element("argument");
 		
 		Node node;
@@ -160,7 +160,7 @@ public class Workflow
 	{
 		try
 		{
-			Workflow wf = new Workflow("Test-UUID-Haha", args[0], args[1], 100);
+			Workflow wf = new Workflow("Test-UUID-Haha", args[0], args[1]);
 		} catch (Exception e)
 		{
 			System.out.println(e.getMessage());
