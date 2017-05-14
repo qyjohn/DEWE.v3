@@ -159,15 +159,16 @@ public class Workflow
 	 *
 	 */
 	 
-	public void prepareJob(Element job)
+	public void prepareJob(Element element)
 	{
-		String id = job.attribute("id").getValue();
-		String name = job.attribute("name").getValue();
-		job.addAttribute("workflow", uuid);
-		job.addAttribute("bucket", s3Bucket);
-		job.addAttribute("prefix", s3Prefix);
+		String id = element.attribute("id").getValue();
+		String name = element.attribute("name").getValue();
+		element.addAttribute("workflow", uuid);
+		element.addAttribute("bucket", s3Bucket);
+		element.addAttribute("prefix", s3Prefix);
 		
-		WorkflowJob wlj = new WorkflowJob(id, name, job.asXML());
+		WorkflowJob job = new WorkflowJob(id, name, element.asXML());
+		/*
 		Element args = job.element("argument");
 		
 		Node node;
@@ -191,12 +192,13 @@ public class Workflow
 				}
             }
 		}
+	*/
 	
 		if (longJobs.contains(name))
 		{
-			wlj.setLongJob(true);
+			job.setLongJob(true);
 		}
-		jobs.put(id, wlj);
+		jobs.put(id, job);
 	}
 
 	public static void main(String[] args)
