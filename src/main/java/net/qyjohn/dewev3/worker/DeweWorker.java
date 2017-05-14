@@ -12,6 +12,7 @@ import com.amazonaws.services.kinesis.model.*;
 import org.dom4j.*;
 import org.dom4j.io.SAXReader;
 import org.apache.commons.io.IOUtils;
+import org.apache.log4j.Logger;
 
 public class DeweWorker extends Thread
 {
@@ -20,12 +21,14 @@ public class DeweWorker extends Thread
 	public AmazonKinesisClient kinesisClient;
 	public String workflow, bucket, prefix, jobId, jobName, command;
 	public String tempDir = "/tmp";
+	public LinkedList<String> cachedFiles = new LinkedList<String>();
 	// For long running jobs
 	volatile boolean completed = false;
 	String longStream;
 	List<Shard> longShards = new ArrayList<Shard>();
 	Map<String, String> longIterators = new HashMap<String, String>();
-
+	// Logging
+	final static Logger logger = Logger.getLogger(DeweWorker.class);
 
 	/**
 	 *
@@ -49,10 +52,21 @@ public class DeweWorker extends Thread
 
 	public DeweWorker(String longStream)
 	{
-		this.longStream = longStream;
-		s3Client = new AmazonS3Client();
-		kinesisClient = new AmazonKinesisClient();
-		listLongShards();
+		try
+		{
+			this.longStream = longStream;
+			tempDir = "/tmp/" + longStream;
+			Process p = Runtime.getRuntime().exec("mkdir -p " + tempDir);
+			p.waitFor();
+
+			s3Client = new AmazonS3Client();
+			kinesisClient = new AmazonKinesisClient();
+			listLongShards();
+		} catch (Exception e)
+		{
+			System.out.println(e.getMessage());
+			e.printStackTrace();
+		}
 	}
 	
 	/**
@@ -146,8 +160,6 @@ public class DeweWorker extends Thread
 					for (Record record : records)
 					{
 						String jobXML = new String(record.getData().array());
-						// For each job, create a temp folder under /tmp
-						tempDir = "/tmp/" + UUID.randomUUID().toString();
 						executeJob(jobXML);
 					}
 	
@@ -184,10 +196,7 @@ public class DeweWorker extends Thread
 	{
 			try
 			{
-				Process p0 = Runtime.getRuntime().exec("mkdir -p " + tempDir);
-				p0.waitFor();
-
-				System.out.println(jobXML);
+				logger.debug(jobXML);
 				Element job = DocumentHelper.parseText(jobXML).getRootElement();
 				workflow = job.attributeValue("workflow");
 				bucket   = job.attributeValue("bucket");
@@ -195,7 +204,7 @@ public class DeweWorker extends Thread
 				jobId    = job.attributeValue("id");
 				jobName  = job.attributeValue("name");
 				command  = tempDir + "/" + jobName;
-
+				logger.info(jobId + ":\t" + jobName);
 				// Compose the command to execute
 				Element args = job.element("argument");
 				Node node;
@@ -218,7 +227,7 @@ public class DeweWorker extends Thread
 						}
 				    	}
 				}
-				System.out.println(command);
+				logger.debug(command);
 
 				// Input and output file definitions
 				HashSet<String> exeFiles  = new HashSet<String>();
@@ -279,7 +288,7 @@ public class DeweWorker extends Thread
 				}       
 				in.close();
 				p2.waitFor();
-				System.out.println(result);
+				logger.debug(result);
 
 				// Upload the output files
 				for (String f : outFiles)
@@ -304,31 +313,35 @@ public class DeweWorker extends Thread
 	 
 	public void download(int type, String filename)
 	{
-		String key=null, outfile = null;
-		if (type==1)	// Binary
+		if (!cachedFiles.contains(filename))
 		{
-			key = prefix + "/bin/" + filename;
-			outfile = tempDir + "/" + filename;
-		}
-		else	// Data
-		{
-			key = prefix + "/workdir/" + filename;
-			outfile = tempDir + "/" + filename;
-		}
+			String key=null, outfile = null;
+			if (type==1)	// Binary
+			{
+				key = prefix + "/bin/" + filename;
+				outfile = tempDir + "/" + filename;
+			}
+			else	// Data
+			{
+				key = prefix + "/workdir/" + filename;
+				outfile = tempDir + "/" + filename;
+			}
 	
-		try
-		{
-			System.out.println("Downloading " + outfile);
-			S3Object object = s3Client.getObject(new GetObjectRequest(bucket, key));
-			InputStream in = object.getObjectContent();
-			OutputStream out = new FileOutputStream(outfile);
-			IOUtils.copy(in, out);
-			in.close();
-			out.close();
-		} catch (Exception e)
-		{
-			System.out.println(e.getMessage());
-			e.printStackTrace();
+			try
+			{
+				logger.debug("Downloading " + outfile);
+				S3Object object = s3Client.getObject(new GetObjectRequest(bucket, key));
+				InputStream in = object.getObjectContent();
+				OutputStream out = new FileOutputStream(outfile);
+				IOUtils.copy(in, out);
+				in.close();
+				out.close();
+			} catch (Exception e)
+			{
+				System.out.println(e.getMessage());
+				e.printStackTrace();
+			}
+			cachedFiles.add(filename);
 		}
 	}
 
@@ -345,13 +358,15 @@ public class DeweWorker extends Thread
 
 		try
 		{
-			System.out.println("Uploading " + file);
+			logger.debug("Uploading " + file);
 			s3Client.putObject(new PutObjectRequest(bucket, key, new File(file)));
 		} catch (Exception e)
 		{
 			System.out.println(e.getMessage());
 			e.printStackTrace();
-		}		
+		}
+
+		cachedFiles.add(filename);		
 	}
 	
 	/**

@@ -31,7 +31,8 @@ public class WorkflowScheduler extends Thread
 		{
 			// The Kinesis stream to publish jobs
 			Properties prop = new Properties();
-			InputStream input = WorkflowScheduler.class.getResourceAsStream("/stream.properties");
+//			InputStream input = WorkflowScheduler.class.getResourceAsStream("/stream.properties");
+			InputStream input = new FileInputStream("config.properties");
 			prop.load(input);
 			jobStream = prop.getProperty("jobStream");
 	
