@@ -24,6 +24,7 @@ public class Workflow
 	public Document document;
 	List<String> longJobs = new ArrayList<String>();
 	final static Logger logger = Logger.getLogger(Workflow.class);
+	public boolean localExec = false;
 
 	
 	/**
@@ -32,9 +33,10 @@ public class Workflow
 	 *
 	 */
 	 
-	public Workflow(String uuid, String bucket, String prefix)
+	public Workflow(String uuid, String bucket, String prefix, boolean localExec)
 	{
 		this.uuid = uuid;
+		this.localExec = localExec;
 		
 		this.s3Bucket = bucket;
 		this.s3Prefix = prefix;
@@ -83,7 +85,7 @@ public class Workflow
 				Element job = (Element) iter.next();
 				longJobs.add(job.attribute("name").getValue());
 			}
-			logger.info("Found the folloing long-running jobs in long.xml:");
+			logger.info("Found long-running job definition long.xml with the following jobs:");
 			for (String s : longJobs)
 			{
 				logger.info("\t" + s);
@@ -91,7 +93,12 @@ public class Workflow
 		}
 		else
 		{
-			logger.info("The workflow does not contain any long-running jobs.");
+			logger.info("The workflow does not long-running job definition long.xml.");
+		}
+
+		if (localExec)
+		{
+			logger.info("Workflow scheduler enforces local execution. All jobs are treated as long-running jobs.");
 		}
 	}
 	
@@ -168,23 +175,12 @@ public class Workflow
 		element.addAttribute("prefix", s3Prefix);
 		
 		WorkflowJob job = new WorkflowJob(id, name, element.asXML());	
+		job.setLongJob(localExec);
 		if (longJobs.contains(name))
 		{
 			job.setLongJob(true);
 		}
 		jobs.put(id, job);
-	}
-
-	public static void main(String[] args)
-	{
-		try
-		{
-			Workflow wf = new Workflow("Test-UUID-Haha", args[0], args[1]);
-		} catch (Exception e)
-		{
-			System.out.println(e.getMessage());
-			e.printStackTrace();
-		}
 	}
 }
 
