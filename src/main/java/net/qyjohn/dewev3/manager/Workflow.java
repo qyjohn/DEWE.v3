@@ -4,16 +4,15 @@ import java.io.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.*;
 
-import org.dom4j.Document;
-import org.dom4j.Element;
-import org.dom4j.Node;
-import org.dom4j.DocumentException;
+import org.dom4j.*;
 import org.dom4j.io.SAXReader;
 
 import com.amazonaws.regions.*;
 import com.amazonaws.services.s3.*;
 import com.amazonaws.services.s3.model.*;
 
+import org.apache.commons.io.IOUtils;
+import org.apache.log4j.Logger;
 
 
 public class Workflow
@@ -23,6 +22,8 @@ public class Workflow
 	public String uuid, s3Bucket, s3Prefix;
 	public SAXReader reader;
 	public Document document;
+	List<String> longJobs = new ArrayList<String>();
+	final static Logger logger = Logger.getLogger(Workflow.class);
 
 	
 	/**
@@ -43,6 +44,7 @@ public class Workflow
 		try
 		{
 			// Initialize the HashMap for workflow jobs
+			checkLongJobs();
 			jobs = new ConcurrentHashMap<String, WorkflowJob>();
 			parseDocument();
 			parseWorkflow();	
@@ -57,6 +59,42 @@ public class Workflow
 	{
 		return jobs.isEmpty();
 	}
+	
+	
+	
+	/**
+	 *
+	 * Load long-running job names from long.xml.
+	 *
+	 */
+         
+	public void checkLongJobs() throws Exception 
+	{
+		// Check if long.xml exist
+		if ( client.doesObjectExist(s3Bucket, s3Prefix+"/long.xml") )
+		{
+			S3Object s3Object= client.getObject(s3Bucket, s3Prefix+"/long.xml");
+			byte[] byteArray = IOUtils.toByteArray(s3Object.getObjectContent());
+			String jobsXML = new String(byteArray);
+			Element jobs = DocumentHelper.parseText(jobsXML).getRootElement();
+
+			for ( Iterator iter = jobs.elementIterator( "job" ); iter.hasNext(); ) 
+			{
+				Element job = (Element) iter.next();
+				longJobs.add(job.attribute("name").getValue());
+			}
+			logger.info("Found the folloing long-running jobs in long.xml:");
+			for (String s : longJobs)
+			{
+				logger.info("\t" + s);
+			}
+		}
+		else
+		{
+			logger.info("The workflow does not contain any long-running jobs.");
+		}
+	}
+	
 	
 	/**
 	 *
@@ -153,6 +191,10 @@ public class Workflow
             }
 		}
 	
+		if (longJobs.contains(name))
+		{
+			wlj.setLongJob(true);
+		}
 		jobs.put(id, wlj);
 	}
 
