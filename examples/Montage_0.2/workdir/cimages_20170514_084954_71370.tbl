@@ -1,0 +1,11 @@
+\datatype=fitshdr
+| cntr|  ctype1|  ctype2|naxis1|naxis2|    crval1|    crval2|    crpix1|    crpix2|     cdelt1|     cdelt2|  crota2|equinox|                                  file|
+|  int|    char|    char|   int|   int|    double|    double|    double|    double|     double|     double|  double|    int|                                  char|
+     1 RA---TAN DEC--TAN    514   1026 275.196290 -16.171530     859.00     991.00 -0.00027778  0.00027778  0.00000    2000 c2mass-atlas-990502s-j1440198.fits
+     2 RA---TAN DEC--TAN    514   1026 275.196290 -16.171530     860.00      21.00 -0.00027778  0.00027778  0.00000    2000 c2mass-atlas-990502s-j1440186.fits
+     3 RA---TAN DEC--TAN    514   1026 275.196290 -16.171530     431.00    -180.00 -0.00027778  0.00027778  0.00000    2000 c2mass-atlas-990502s-j1430092.fits
+     4 RA---TAN DEC--TAN    514   1026 275.196290 -16.171530       4.00     992.00 -0.00027778  0.00027778  0.00000    2000 c2mass-atlas-990502s-j1420198.fits
+     5 RA---TAN DEC--TAN    514   1026 275.196290 -16.171530       3.00      22.00 -0.00027778  0.00027778  0.00000    2000 c2mass-atlas-990502s-j1420186.fits
+     6 RA---TAN DEC--TAN    514   1026 275.196290 -16.171530    -427.00    -185.00 -0.00027778  0.00027778  0.00000    2000 c2mass-atlas-990502s-j1350092.fits
+     7 RA---TAN DEC--TAN    514   1026 275.196290 -16.171530     431.00     790.00 -0.00027778  0.00027778  0.00000    2000 c2mass-atlas-990502s-j1430080.fits
+     8 RA---TAN DEC--TAN    515   1026 275.196290 -16.171530    -425.00     785.00 -0.00027778  0.00027778  0.00000    2000 c2mass-atlas-990502s-j1350080.fits

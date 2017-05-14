@@ -120,7 +120,7 @@ public class DeweWorker extends Thread
 					{
 						String jobXML = new String(record.getData().array());
 						// For each job, create a temp folder under /tmp
-						tempDir = tempDir + "/" + UUID.randomUUID().toString();
+						tempDir = "/tmp/" + UUID.randomUUID().toString();
 						executeJob(jobXML);
 					}
 	
@@ -166,7 +166,7 @@ public class DeweWorker extends Thread
 					if ( node instanceof Element ) 
 					{
 						e = (Element) node;
-						command = command + " " + e.attribute("file").getValue();
+						command = command + " " + e.attribute("name").getValue();
 					}
 					else
 					{
@@ -180,26 +180,45 @@ public class DeweWorker extends Thread
 				System.out.println(command);
 
 				// Input and output file definitions
+				HashSet<String> exeFiles  = new HashSet<String>();
 				HashSet<String> inFiles  = new HashSet<String>();
 				HashSet<String> outFiles = new HashSet<String>();
+				exeFiles.add(jobName);
 				for ( Iterator iter = job.elementIterator( "uses" ); iter.hasNext(); ) 
 				{
 					Element file = (Element) iter.next();
-					System.out.println(file.attribute("file").getValue() + "\t" + file.attribute("link").getValue());
 					if (file.attribute("link").getValue().equals("input"))
 					{
-						inFiles.add(file.attribute("file").getValue());
+						// This is an input file
+						if (file.attribute("executable") != null)
+						{
+							if (file.attribute("executable").getValue().equals("true"))
+							{
+								exeFiles.add(file.attribute("name").getValue());							
+							}
+							else
+							{
+								inFiles.add(file.attribute("name").getValue());
+							}							
+						}
+						else
+						{
+							inFiles.add(file.attribute("name").getValue());
+						}							
 					}
 					else
 					{
-						outFiles.add(file.attribute("file").getValue());
+						outFiles.add(file.attribute("name").getValue());
 					}
 				}
 
 				// Download the executable and the input files
-				download(1, jobName);
-				Process p1 = Runtime.getRuntime().exec("chmod u+x " + tempDir + "/" + jobName);
-				p1.waitFor();
+				for (String f : exeFiles)
+				{
+					download(1, f);
+					Process p1 = Runtime.getRuntime().exec("chmod u+x " + tempDir + "/" + f);
+					p1.waitFor();
+				}
 				for (String f : inFiles)
 				{
 					download(2, f);
@@ -252,6 +271,7 @@ public class DeweWorker extends Thread
 	
 		try
 		{
+			System.out.println("Downloading " + outfile);
 			S3Object object = s3Client.getObject(new GetObjectRequest(bucket, key));
 			InputStream in = object.getObjectContent();
 			OutputStream out = new FileOutputStream(outfile);
@@ -272,6 +292,7 @@ public class DeweWorker extends Thread
 
 		try
 		{
+			System.out.println("Uploading " + file);
 			s3Client.putObject(new PutObjectRequest(bucket, key, new File(file)));
 		} catch (Exception e)
 		{

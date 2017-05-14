@@ -1,0 +1,21 @@
+DEBUGGING mDAG:
+
+lookup("M17") ->   (275.196290,-16.171530)
+
+[mArchiveList 2mass j "M17" 0.28 0.28 ./images.tbl]
+[mDAGTbls ./images.tbl ./big_region.hdr ./rimages.tbl ./pimages.tbl ./cimages.tbl]
+[ mOverlaps ./rimages.tbl ./diffs.tbl]
+
+numTilesX     = 1
+numTilesY     = 1
+numTiles      = 1
+
+shrinkFactorX = 1
+shrinkFactorY = 1
+shrinkFactor  = 1
+
+Generating DAG file header ...
+Generating DAG file filename list ...
+Generating DAG file job list ...
+Generating DAG file parent/child info ...
+done.

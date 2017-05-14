@@ -19,30 +19,30 @@
 
   <job id="ID000002" name="SleepRecord">
     <argument>
-      <filename file="a.dat"/>
+      <file name="a.dat"/>
     </argument>
 
-    <uses file="a.dat" link="output" transfer="true"/>
+    <uses name="a.dat" link="output" transfer="true"/>
   </job>
 
   <job id="ID000003" name="SleepRecord">
     <argument>
-      <filename file="b.dat"/>
+      <file name="b.dat"/>
     </argument>
 
-    <uses file="b.dat" link="output" transfer="true"/>
+    <uses name="b.dat" link="output" transfer="true"/>
   </job>
 
   <job id="ID000004" name="Add">
     <argument>
-      <filename file="a.dat"/>
-      <filename file="b.dat"/>
-      <filename file="c.dat"/>
+      <file name="a.dat"/>
+      <file name="b.dat"/>
+      <file name="c.dat"/>
     </argument>
 
-    <uses file="a.dat" link="input" transfer="true"/>
-    <uses file="b.dat" link="input" transfer="true"/>
-    <uses file="c.dat" link="output" transfer="false"/>
+    <uses name="a.dat" link="input" transfer="true"/>
+    <uses name="b.dat" link="input" transfer="true"/>
+    <uses name="c.dat" link="output" transfer="false"/>
   </job>
 
   <!-- Part 3:  Precedence Requirements -->

@@ -178,8 +178,9 @@ public class Workflow
 			node = args.node(i);
 			if ( node instanceof Element ) 
 			{
+				// The argument is a filename
                 e = (Element) node;
-                wlj.addArgument(e.attribute("file").getValue());
+                wlj.addArgument(e.attribute("name").getValue());
             }
             else
             {
