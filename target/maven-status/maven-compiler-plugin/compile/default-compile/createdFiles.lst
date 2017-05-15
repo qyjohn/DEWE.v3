@@ -1,4 +1,7 @@
 net/qyjohn/dewev3/manager/WorkflowScheduler.class
+net/qyjohn/dewev3/worker/LambdaWorker.class
+net/qyjohn/dewev3/worker/LocalWorker.class
 net/qyjohn/dewev3/worker/DeweWorker.class
 net/qyjohn/dewev3/manager/WorkflowJob.class
 net/qyjohn/dewev3/manager/Workflow.class
+net/qyjohn/dewev3/worker/DeweExecutor.class

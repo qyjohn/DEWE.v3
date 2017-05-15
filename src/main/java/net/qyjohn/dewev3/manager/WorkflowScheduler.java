@@ -22,7 +22,7 @@ public class WorkflowScheduler extends Thread
 	int timeout;
 	boolean localExec, cleanUp, completed;
 	
-	DeweWorker worker;
+	LocalWorker worker;
 	final static Logger logger = Logger.getLogger(WorkflowScheduler.class);
 	
 	public WorkflowScheduler(String bucket, String prefix)
@@ -54,7 +54,7 @@ public class WorkflowScheduler extends Thread
 			completed  = false;
 			
 			// Run one instance of the DeweWorker in the background
-			worker = new DeweWorker(longStream, cleanUp);
+			worker = new LocalWorker(longStream, cleanUp);
 			worker.start();
 		} catch (Exception e)
 		{
@@ -266,6 +266,7 @@ public class WorkflowScheduler extends Thread
 		//delete the ackStream and the longString.
 		deleteStream(ackStream);
 		deleteStream(longStream);
+		System.exit(0);
 	}
 
 	public static void main(String[] args)
