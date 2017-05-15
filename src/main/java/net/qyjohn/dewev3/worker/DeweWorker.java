@@ -170,6 +170,17 @@ public class DeweWorker extends Thread
 				// The longStream has been deleted. The workflow has completed execution
 				completed = true;
 			}
+		}
+
+		// Remove temp folder
+		try
+		{
+			Process p = Runtime.getRuntime().exec("rm -Rf " + tempDir);
+			p.waitFor();
+		} catch (Exception e)
+		{
+			System.out.println(e.getMessage());
+			e.printStackTrace();
 		}		
 	}
 	
