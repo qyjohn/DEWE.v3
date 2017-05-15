@@ -4,6 +4,7 @@ import java.io.*;
 import java.nio.*;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import com.amazonaws.ClientConfiguration;
 import com.amazonaws.services.lambda.runtime.*; 
 import com.amazonaws.services.lambda.runtime.events.*;
 import com.amazonaws.services.s3.*;
@@ -35,7 +36,9 @@ public class LambdaWorker
 	 
 	public LambdaWorker()
 	{
-		s3Client = new AmazonS3Client();
+		ClientConfiguration clientConfig = new ClientConfiguration();
+		clientConfig.setMaxConnections(100);
+		s3Client = new AmazonS3Client(clientConfig);
 		kinesisClient = new AmazonKinesisClient();
 		cachedFiles = new ConcurrentHashMap<String, Boolean>();
 		executor = new DeweExecutor(s3Client, kinesisClient, tempDir, cachedFiles);

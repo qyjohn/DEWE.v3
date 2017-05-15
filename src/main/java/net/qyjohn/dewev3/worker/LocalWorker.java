@@ -4,6 +4,7 @@ import java.io.*;
 import java.nio.*;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import com.amazonaws.ClientConfiguration;
 import com.amazonaws.services.lambda.runtime.*; 
 import com.amazonaws.services.lambda.runtime.events.*;
 import com.amazonaws.services.s3.*;
@@ -29,7 +30,7 @@ public class LocalWorker extends Thread
 	Map<String, String> longIterators = new HashMap<String, String>();
 	Stack<String> jobStack = new Stack<String>();
 	// Logging
-	final static Logger logger = Logger.getLogger(DeweWorker.class);
+	final static Logger logger = Logger.getLogger(LocalWorker.class);
 
 	
 	/**
@@ -49,7 +50,9 @@ public class LocalWorker extends Thread
 			Process p = Runtime.getRuntime().exec("mkdir -p " + tempDir);
 			p.waitFor();
 
-			s3Client = new AmazonS3Client();
+			ClientConfiguration clientConfig = new ClientConfiguration();
+			clientConfig.setMaxConnections(100);
+			s3Client = new AmazonS3Client(clientConfig);
 			kinesisClient = new AmazonKinesisClient();
 			listLongShards();
 
