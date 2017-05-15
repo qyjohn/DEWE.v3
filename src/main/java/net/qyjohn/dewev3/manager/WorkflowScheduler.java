@@ -20,7 +20,7 @@ public class WorkflowScheduler extends Thread
 	Workflow workflow;
 	String uuid, s3Bucket, s3Prefix;
 	int timeout;
-	boolean localExec, completed;
+	boolean localExec, cleanUp, completed;
 	
 	DeweWorker worker;
 	final static Logger logger = Logger.getLogger(WorkflowScheduler.class);
@@ -35,6 +35,7 @@ public class WorkflowScheduler extends Thread
 			prop.load(input);
 			jobStream = prop.getProperty("jobStream");
 			localExec = Boolean.parseBoolean(prop.getProperty("localExec"));
+			cleanUp   = Boolean.parseBoolean(prop.getProperty("cleanUp"));
 	
 			// Each instance of WorkflowScheduler is a single thread, managing a single workflow.
 			// A workflow is represented by a UUID, and the ACK stream is named with the same UUID.
@@ -53,7 +54,7 @@ public class WorkflowScheduler extends Thread
 			completed  = false;
 			
 			// Run one instance of the DeweWorker in the background
-			worker = new DeweWorker(longStream);
+			worker = new DeweWorker(longStream, cleanUp);
 			worker.start();
 		} catch (Exception e)
 		{

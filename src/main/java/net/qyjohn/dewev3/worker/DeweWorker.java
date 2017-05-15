@@ -27,6 +27,7 @@ public class DeweWorker extends Thread
 	String longStream;
 	List<Shard> longShards = new ArrayList<Shard>();
 	Map<String, String> longIterators = new HashMap<String, String>();
+	boolean cleanUp = false;
 	// Logging
 	final static Logger logger = Logger.getLogger(DeweWorker.class);
 
@@ -50,11 +51,12 @@ public class DeweWorker extends Thread
 	 *
 	 */
 
-	public DeweWorker(String longStream)
+	public DeweWorker(String longStream, boolean cleanUp)
 	{
 		try
 		{
 			this.longStream = longStream;
+			this.cleanUp = cleanUp;
 			tempDir = "/tmp/" + longStream;
 			Process p = Runtime.getRuntime().exec("mkdir -p " + tempDir);
 			p.waitFor();
@@ -173,15 +175,18 @@ public class DeweWorker extends Thread
 		}
 
 		// Remove temp folder
-		try
+		if (cleanUp)
 		{
-			Process p = Runtime.getRuntime().exec("rm -Rf " + tempDir);
-			p.waitFor();
-		} catch (Exception e)
-		{
-			System.out.println(e.getMessage());
-			e.printStackTrace();
-		}		
+			try
+			{
+				Process p = Runtime.getRuntime().exec("rm -Rf " + tempDir);
+				p.waitFor();
+			} catch (Exception e)
+			{
+				System.out.println(e.getMessage());
+				e.printStackTrace();
+			}		
+		}
 	}
 	
 	

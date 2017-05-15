@@ -6,8 +6,10 @@ mDAG 2mass j M17 $1 $1 0.0002777778 . file://$PWD file://$PWD/inputs
 mArchiveExec images.tbl
 gunzip *.gz
 mv dag.xml ../
-more cache.list | grep local | while read line ; do 
+more cache.list | grep 'tbl\|hdr' | while read line ; do 
     src=$(echo $line | awk '{print $2;}' | awk -F "/" '{print $NF}')
     dest=$(echo $line | awk '{print $1;}')
     cp $src $dest
 done
+
+
