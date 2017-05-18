@@ -1,8 +1,8 @@
-/efs/DEWE.v3/src/main/java/net/qyjohn/dewev3/worker/LambdaWorkerWithS3FS.java
-/efs/DEWE.v3/src/main/java/net/qyjohn/dewev3/manager/Test.java
-/efs/DEWE.v3/src/main/java/net/qyjohn/dewev3/manager/WorkflowScheduler.java
-/efs/DEWE.v3/src/main/java/net/qyjohn/dewev3/manager/WorkflowJob.java
-/efs/DEWE.v3/src/main/java/net/qyjohn/dewev3/worker/DeweExecutor.java
-/efs/DEWE.v3/src/main/java/net/qyjohn/dewev3/worker/LambdaWorker.java
-/efs/DEWE.v3/src/main/java/net/qyjohn/dewev3/manager/Workflow.java
-/efs/DEWE.v3/src/main/java/net/qyjohn/dewev3/worker/LocalWorker.java
+/home/qyjohn/DEWE.v3/src/main/java/net/qyjohn/dewev3/manager/Workflow.java
+/home/qyjohn/DEWE.v3/src/main/java/net/qyjohn/dewev3/manager/WorkflowJob.java
+/home/qyjohn/DEWE.v3/src/main/java/net/qyjohn/dewev3/worker/LambdaWorkerWithS3FS.java
+/home/qyjohn/DEWE.v3/src/main/java/net/qyjohn/dewev3/worker/LambdaWorker.java
+/home/qyjohn/DEWE.v3/src/main/java/net/qyjohn/dewev3/manager/WorkflowScheduler.java
+/home/qyjohn/DEWE.v3/src/main/java/net/qyjohn/dewev3/worker/LocalWorker.java
+/home/qyjohn/DEWE.v3/src/main/java/net/qyjohn/dewev3/manager/Test.java
+/home/qyjohn/DEWE.v3/src/main/java/net/qyjohn/dewev3/worker/DeweExecutor.java
