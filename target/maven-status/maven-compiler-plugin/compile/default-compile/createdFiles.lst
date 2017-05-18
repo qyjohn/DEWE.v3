@@ -1,4 +1,6 @@
 net/qyjohn/dewev3/manager/WorkflowScheduler.class
+net/qyjohn/dewev3/manager/Test.class
+net/qyjohn/dewev3/worker/LambdaWorkerWithS3FS.class
 net/qyjohn/dewev3/worker/LambdaWorker.class
 net/qyjohn/dewev3/worker/LocalWorker.class
 net/qyjohn/dewev3/manager/WorkflowJob.class

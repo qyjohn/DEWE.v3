@@ -1,0 +1,8 @@
+  <job id="ID000003" name="SleepRecord" workflow="TEST-UUID-HAHA-HAHA" bucket="331982-iad" prefix="SD">
+    <argument>
+      <file name="b.dat"/>
+    </argument>
+
+    <uses name="b.dat" link="output" transfer="true"/>
+  </job>
+

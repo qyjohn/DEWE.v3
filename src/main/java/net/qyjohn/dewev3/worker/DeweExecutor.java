@@ -24,8 +24,21 @@ public class DeweExecutor extends Thread
 	public String tempDir = "/tmp";
 	public ConcurrentHashMap<String, Boolean> cachedFiles;
 	Stack<String> jobStack;
+	// Cache binary and input / output data
+	public boolean caching = false;
 	// Logging
 	final static Logger logger = Logger.getLogger(DeweExecutor.class);
+
+	public DeweExecutor(AmazonS3Client s3Client, AmazonKinesisClient kinesisClient, String tempDir)
+	{
+		this.s3Client = s3Client;
+		this.kinesisClient = kinesisClient;
+		this.tempDir = tempDir;
+		this.cachedFiles = cachedFiles;
+
+		// No caching, create a new temp folder for each invocation
+		runCommand("mkdir -p " + this.tempDir);
+	}
 
 	 
 	public DeweExecutor(AmazonS3Client s3Client, AmazonKinesisClient kinesisClient, String tempDir, ConcurrentHashMap<String, Boolean> cachedFiles)
@@ -34,6 +47,7 @@ public class DeweExecutor extends Thread
 		this.kinesisClient = kinesisClient;
 		this.tempDir = tempDir;
 		this.cachedFiles = cachedFiles;
+		caching = true;
 	}
 	
 	public void setJobStack(Stack<String> stack)
@@ -54,7 +68,7 @@ public class DeweExecutor extends Thread
 				}
 				else
 				{
-					sleep(50);
+					sleep(new Random().nextInt(100));
 				}
 			} catch (Exception e)
 			{
@@ -138,8 +152,7 @@ public class DeweExecutor extends Thread
 				for (String f : exeFiles)
 				{
 					download(1, f);
-					Process p1 = Runtime.getRuntime().exec("chmod u+x " + tempDir + "/" + f);
-					p1.waitFor();
+					runCommand("chmod u+x " + tempDir + "/" + f);
 				}
 				for (String f : inFiles)
 				{
@@ -169,7 +182,13 @@ public class DeweExecutor extends Thread
 				}
 
 				// Acknowledge the job to be completed
-				ackJob(workflow, jobId);		
+				ackJob(workflow, jobId);
+
+				// If no caching, clean up after execution
+				if (!caching)
+				{
+					runCommand("rm -Rf " + tempDir);
+				}		
 			} catch (Exception e)
 			{
 				System.out.println(e.getMessage());
@@ -185,51 +204,84 @@ public class DeweExecutor extends Thread
 	 
 	public void download(int type, String filename)
 	{
-		if (cachedFiles.get(filename) == null)
+		if (caching)
 		{
-			cachedFiles.put(filename, new Boolean(false));
-			String key=null, outfile = null;
-			if (type==1)	// Binary
+			if (cachedFiles.get(filename) == null)
 			{
-				key = prefix + "/bin/" + filename;
-				outfile = tempDir + "/" + filename;
-			}
-			else	// Data
-			{
-				key = prefix + "/workdir/" + filename;
-				outfile = tempDir + "/" + filename;
-			}
-	
-			try
-			{
-				logger.debug("Downloading " + outfile);
-				S3Object object = s3Client.getObject(new GetObjectRequest(bucket, key));
-				InputStream in = object.getObjectContent();
-				OutputStream out = new FileOutputStream(outfile);
-				IOUtils.copy(in, out);
-				in.close();
-				out.close();
-				object.close();
-			} catch (Exception e)
-			{
-				System.out.println(e.getMessage());
-				e.printStackTrace();
-			}
-			cachedFiles.put(filename, new Boolean(true));
-		}
-		else
-		{
-			while (cachedFiles.get(filename).booleanValue() == false)
-			{
+				cachedFiles.put(filename, new Boolean(false));
+				String key=null, outfile = null;
+				if (type==1)	// Binary
+				{
+					key = prefix + "/bin/" + filename;
+					outfile = tempDir + "/" + filename;
+				}
+				else	// Data
+				{
+					key = prefix + "/workdir/" + filename;
+					outfile = tempDir + "/" + filename;
+				}
+		
 				try
 				{
-					sleep(50);
+					logger.debug("Downloading " + outfile);
+					S3Object object = s3Client.getObject(new GetObjectRequest(bucket, key));
+					InputStream in = object.getObjectContent();
+					OutputStream out = new FileOutputStream(outfile);
+					IOUtils.copy(in, out);
+					in.close();
+					out.close();
+					object.close();
 				} catch (Exception e)
 				{
 					System.out.println(e.getMessage());
 					e.printStackTrace();
 				}
+				cachedFiles.put(filename, new Boolean(true));
 			}
+			else
+			{
+				while (cachedFiles.get(filename).booleanValue() == false)
+				{
+					try
+					{
+						sleep(50);
+					} catch (Exception e)
+					{
+						System.out.println(e.getMessage());
+						e.printStackTrace();
+					}
+				}
+			}			
+		}
+		else
+		{
+				String key=null, outfile = null;
+				if (type==1)	// Binary
+				{
+					key = prefix + "/bin/" + filename;
+					outfile = tempDir + "/" + filename;
+				}
+				else	// Data
+				{
+					key = prefix + "/workdir/" + filename;
+					outfile = tempDir + "/" + filename;
+				}
+		
+				try
+				{
+					logger.debug("Downloading " + outfile);
+					S3Object object = s3Client.getObject(new GetObjectRequest(bucket, key));
+					InputStream in = object.getObjectContent();
+					OutputStream out = new FileOutputStream(outfile);
+					IOUtils.copy(in, out);
+					in.close();
+					out.close();
+				} catch (Exception e)
+				{
+					System.out.println(e.getMessage());
+					e.printStackTrace();
+				}
+			
 		}
 	}
 
@@ -241,7 +293,10 @@ public class DeweExecutor extends Thread
 	 
 	public void upload(String filename)
 	{
-		cachedFiles.put(filename, new Boolean(false));
+		if (caching)
+		{
+			cachedFiles.put(filename, new Boolean(false));
+		}
 		String key  = prefix + "/workdir/" + filename;
 		String file = tempDir + "/" + filename;
 
@@ -254,7 +309,10 @@ public class DeweExecutor extends Thread
 			System.out.println(e.getMessage());
 			e.printStackTrace();
 		}
-		cachedFiles.put(filename, new Boolean(true));
+		if (caching)
+		{
+			cachedFiles.put(filename, new Boolean(true));
+		}
 	}
 	
 	/**
@@ -279,5 +337,35 @@ public class DeweExecutor extends Thread
 				System.out.println(e.getMessage());
 				e.printStackTrace();	
 			}
+	}
+	
+	
+	/**
+	 *
+	 * Run a command 
+	 *
+	 */
+	 
+	public void runCommand(String command)
+	{
+		try
+		{
+			logger.info(command);
+			Process p = Runtime.getRuntime().exec(command);
+			BufferedReader in = new BufferedReader(new InputStreamReader(p.getInputStream()));
+			String result = "";
+			String line;
+			while ((line = in.readLine()) != null) 
+			{
+				result = result + line + "\n";
+			}       
+			in.close();
+			p.waitFor();
+			logger.info(result);
+		} catch (Exception e) 
+		{
+			logger.error(e.getMessage());
+			logger.error(e.getStackTrace());
+		}
 	}
 }

@@ -23,7 +23,6 @@ public class LambdaWorker
 	public AmazonKinesisClient kinesisClient;
 	public DeweExecutor executor;
 	public String tempDir = "/tmp";
-	public ConcurrentHashMap<String, Boolean> cachedFiles;
 	// Logging
 	final static Logger logger = Logger.getLogger(LambdaWorker.class);
 
@@ -36,12 +35,10 @@ public class LambdaWorker
 	 
 	public LambdaWorker()
 	{
-		ClientConfiguration clientConfig = new ClientConfiguration();
-		clientConfig.setMaxConnections(100);
-		s3Client = new AmazonS3Client(clientConfig);
+		tempDir = "/tmp/" + UUID.randomUUID().toString();
+		s3Client = new AmazonS3Client();
 		kinesisClient = new AmazonKinesisClient();
-		cachedFiles = new ConcurrentHashMap<String, Boolean>();
-		executor = new DeweExecutor(s3Client, kinesisClient, tempDir, cachedFiles);
+		executor = new DeweExecutor(s3Client, kinesisClient, tempDir);
 	}
 
 	

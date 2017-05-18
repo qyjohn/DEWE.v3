@@ -47,12 +47,8 @@ public class LocalWorker extends Thread
 			this.longStream = longStream;
 			this.cleanUp = cleanUp;
 			tempDir = "/tmp/" + longStream;
-			Process p = Runtime.getRuntime().exec("mkdir -p " + tempDir);
-			p.waitFor();
 
-			ClientConfiguration clientConfig = new ClientConfiguration();
-			clientConfig.setMaxConnections(100);
-			s3Client = new AmazonS3Client(clientConfig);
+			s3Client = new AmazonS3Client();
 			kinesisClient = new AmazonKinesisClient();
 			listLongShards();
 
