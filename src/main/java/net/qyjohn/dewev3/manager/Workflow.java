@@ -170,11 +170,45 @@ public class Workflow
 	{
 		String id = element.attribute("id").getValue();
 		String name = element.attribute("name").getValue();
+		String command = name;
+		
+//		element.addAttribute("workflow", uuid);
+//		element.addAttribute("bucket", s3Bucket);
+//		element.addAttribute("prefix", s3Prefix);
+		
+		
+		// Compose the command to execute
+		Element args = element.element("argument");
+		Node node;
+		Element e;
+		StringTokenizer st;
+		for ( int i = 0, size = args.nodeCount(); i < size; i++ )
+		{
+			node = args.node(i);
+			if ( node instanceof Element ) 
+			{
+				e = (Element) node;
+				command = command + " " + e.attribute("name").getValue();
+			}
+			else
+			{
+				st = new StringTokenizer(node.getText().trim());
+				while (st.hasMoreTokens()) 
+				{
+					command = command + " " + st.nextToken();
+				}
+			}
+		}
+		
+		// Improve the XML representation of the job
 		element.addAttribute("workflow", uuid);
 		element.addAttribute("bucket", s3Bucket);
 		element.addAttribute("prefix", s3Prefix);
+		element.addAttribute("command", command);		
 		
+		// Create a WorkflowJob object
 		WorkflowJob job = new WorkflowJob(id, name, element.asXML());	
+		job.setCommand(command);
 		job.setLongJob(localExec);
 		if (longJobs.contains(name))
 		{

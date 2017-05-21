@@ -8,7 +8,7 @@ int main()
         srand((unsigned) time(&t));
 
         /* Generate a random number between 0 and 100 */
-        int time = rand() % 100;
+        int time = rand() % 10;
         sleep(time);
 
 	return 0;

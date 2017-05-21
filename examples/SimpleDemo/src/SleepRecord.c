@@ -8,7 +8,7 @@ int main(int argc, char *argv[])
 	srand((unsigned) time(&t));
 
 	/* Generate a random number between 0 and 100 */
-	int time = rand() % 100;
+	int time = rand() % 10;
 	sleep(time);
 
 	FILE *file = fopen(argv[1], "w");

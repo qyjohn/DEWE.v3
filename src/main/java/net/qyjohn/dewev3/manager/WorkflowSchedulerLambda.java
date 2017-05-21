@@ -19,11 +19,10 @@ public class WorkflowSchedulerLambda extends Thread
 
 	Workflow workflow;
 	String uuid, s3Bucket, s3Prefix;
-	int timeout;
 	boolean localExec, cleanUp, completed;
 	
-	LocalWorker worker;
-	final static Logger logger = Logger.getLogger(WorkflowScheduler.class);
+	LocalWorkerLambda worker;
+	final static Logger logger = Logger.getLogger(WorkflowSchedulerLambda.class);
 	
 	public WorkflowSchedulerLambda(String bucket, String prefix)
 	{
@@ -54,7 +53,7 @@ public class WorkflowSchedulerLambda extends Thread
 			completed  = false;
 			
 			// Run one instance of the DeweWorker in the background
-			worker = new LocalWorker(longStream, cleanUp);
+			worker = new LocalWorkerLambda(longStream, cleanUp);
 			worker.start();
 		} catch (Exception e)
 		{
