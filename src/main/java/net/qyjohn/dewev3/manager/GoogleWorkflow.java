@@ -172,12 +172,7 @@ public class GoogleWorkflow
 	{
 		String id = element.attribute("id").getValue();
 		String name = element.attribute("name").getValue();
-		String command = name;
-		
-//		element.addAttribute("workflow", uuid);
-//		element.addAttribute("bucket", s3Bucket);
-//		element.addAttribute("prefix", s3Prefix);
-		
+		String command = name;		
 		
 		// Compose the command to execute
 		Element args = element.element("argument");
