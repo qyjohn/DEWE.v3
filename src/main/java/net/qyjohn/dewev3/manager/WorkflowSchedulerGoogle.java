@@ -41,8 +41,8 @@ public class WorkflowSchedulerGoogle extends Thread
 			completed  = false;
 			
 			// Run one instance of the DeweWorker in the background
-//			worker = new LocalWorkerGoogle(uuid, cleanUp);
-//			worker.start();
+			worker = new LocalWorkerGoogle(uuid, cleanUp);
+			worker.start();
 		} catch (Exception e)
 		{
 			System.out.println(e.getMessage());
@@ -127,6 +127,7 @@ public class WorkflowSchedulerGoogle extends Thread
 
 		//delete the ackStream and the longString.
 		transceiver.cleanUp();
+		worker.setAsCompleted();
 		System.exit(0);
 	}
 

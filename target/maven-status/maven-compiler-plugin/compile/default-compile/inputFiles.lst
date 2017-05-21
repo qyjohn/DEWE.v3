@@ -6,6 +6,7 @@
 /home/qyjohn/DEWE.v3/src/main/java/net/qyjohn/dewev3/worker/DeweExecutor.java
 /home/qyjohn/DEWE.v3/src/main/java/net/qyjohn/dewev3/manager/WorkflowJob.java
 /home/qyjohn/DEWE.v3/src/main/java/net/qyjohn/dewev3/manager/WorkflowSchedulerGoogle.java
+/home/qyjohn/DEWE.v3/src/main/java/net/qyjohn/dewev3/worker/GoogleExecutor.java
 /home/qyjohn/DEWE.v3/src/main/java/net/qyjohn/dewev3/worker/LambdaWorkerWithS3FS.java
 /home/qyjohn/DEWE.v3/src/main/java/net/qyjohn/dewev3/manager/GoogleTransceiver.java
 /home/qyjohn/DEWE.v3/src/main/java/net/qyjohn/dewev3/worker/LocalWorkerGoogle.java

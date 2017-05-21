@@ -4,31 +4,29 @@ import java.io.*;
 import java.nio.*;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
-import com.amazonaws.ClientConfiguration;
-import com.amazonaws.services.lambda.runtime.*; 
-import com.amazonaws.services.lambda.runtime.events.*;
-import com.amazonaws.services.s3.*;
-import com.amazonaws.services.s3.model.*;
-import com.amazonaws.services.kinesis.*;
-import com.amazonaws.services.kinesis.model.*;
 import org.dom4j.*;
 import org.dom4j.io.SAXReader;
 import org.apache.commons.io.IOUtils;
 import org.apache.log4j.Logger;
+import com.google.cloud.ServiceOptions;
+import com.google.cloud.pubsub.spi.v1.*;
+import com.google.pubsub.v1.*;
 
 public class LocalWorkerGoogle extends Thread
 {
 	// Common components
-	public AmazonS3Client s3Client;
-	public AmazonKinesisClient kinesisClient;
+	public String uuid;
+	public String projectId = ServiceOptions.getDefaultProjectId();
+	public SubscriptionAdminClient subscriptionAdminClient;
+	public TopicName longTopic, ackTopic;
+
+
+
 	public String tempDir = "/tmp";
 	public ConcurrentHashMap<String, Boolean> cachedFiles;
 	// For long running jobs
 	volatile boolean completed = false, cleanUp = false;
-	String longStream;
-	List<Shard> longShards = new ArrayList<Shard>();
-	Map<String, String> longIterators = new HashMap<String, String>();
-	Stack<String> jobStack = new Stack<String>();
+	Stack<PubsubMessage> jobStack = new Stack<PubsubMessage>();
 	// Logging
 	final static Logger logger = Logger.getLogger(LocalWorkerGoogle.class);
 
@@ -40,24 +38,28 @@ public class LocalWorkerGoogle extends Thread
 	 *
 	 */
 
-	public LocalWorkerGoogle(String longStream, boolean cleanUp)
+	public LocalWorkerGoogle(String uuid, boolean cleanUp)
 	{
+		this.uuid = uuid;
+		this.cleanUp = cleanUp;
+		tempDir = "/tmp/" + uuid;
+		ackTopic  = TopicName.create(projectId, uuid);
+		longTopic = TopicName.create(projectId, uuid+"-Long-Jobs");
+		
 		try
 		{
-			this.longStream = longStream;
-			this.cleanUp = cleanUp;
-			tempDir = "/tmp/" + longStream;
+			Runtime.getRuntime().exec("mkdir -p " + tempDir);
 
-			s3Client = new AmazonS3Client();
-			kinesisClient = new AmazonKinesisClient();
-			listLongShards();
+			subscriptionAdminClient = SubscriptionAdminClient.create();
+			setupTopicSubscriber();
 
 			cachedFiles = new ConcurrentHashMap<String, Boolean>();
 			int nProc = Runtime.getRuntime().availableProcessors();
-			DeweExecutor executors[] = new DeweExecutor[nProc];
+
+			GoogleExecutor executors[] = new GoogleExecutor[nProc];
 			for (int i=0; i<nProc; i++)
 			{
-				executors[i] = new DeweExecutor(s3Client, kinesisClient, tempDir, cachedFiles);
+				executors[i] = new GoogleExecutor(uuid, tempDir, cachedFiles);
 				executors[i].setJobStack(jobStack);
 				executors[i].start();
 			}
@@ -68,47 +70,45 @@ public class LocalWorkerGoogle extends Thread
 		}
 	}
 	
-	/**
-	 *
-	 * The long running job handler receives jobs from a separate Kinesis stream.
-	 *
-	 */
-
-	public void listLongShards()
+	public void setupTopicSubscriber()
 	{
-		DescribeStreamRequest describeStreamRequest = new DescribeStreamRequest();
-		describeStreamRequest.setStreamName(longStream);
-		String exclusiveStartShardId = null;
-		do 
+		try
 		{
-			describeStreamRequest.setExclusiveStartShardId( exclusiveStartShardId );
-			DescribeStreamResult describeStreamResult = kinesisClient.describeStream( describeStreamRequest );
-			longShards.addAll( describeStreamResult.getStreamDescription().getShards() );
-			if (describeStreamResult.getStreamDescription().getHasMoreShards() && longShards.size() > 0) 
+
+			SubscriptionName subscriptionName = SubscriptionName.create(projectId, uuid + "-Long-Jobs");
+			// create a pull subscription with default acknowledgement deadline
+			Subscription subscription = subscriptionAdminClient.createSubscription(
+				subscriptionName, longTopic, PushConfig.getDefaultInstance(), 0);
+			MessageReceiver receiver = new MessageReceiver() 
 			{
-				exclusiveStartShardId = longShards.get(longShards.size() - 1).getShardId();
-			} 
-			else 
+				@Override
+				public void receiveMessage(PubsubMessage message, AckReplyConsumer consumer) 
+				{
+					// handle incoming message, then ack/nack the received message
+					jobStack.push(message);
+					consumer.ack();
+				}
+			};
+			Subscriber subscriber = null;
+			try 
 			{
-				exclusiveStartShardId = null;
+				// Create a subscriber for "my-subscription-id" bound to the message receiver
+				subscriber = Subscriber.defaultBuilder(subscriptionName, receiver).build();
+				subscriber.startAsync();
+			} finally 
+			{
+				if (subscriber != null) 
+				{
+				}	
 			}
-		} while ( exclusiveStartShardId != null );
-
-		for (Shard shard : longShards)
+		} catch (Exception e)
 		{
-			String shardId = shard.getShardId();
-			String shardIterator;
-			GetShardIteratorRequest getShardIteratorRequest = new GetShardIteratorRequest();
-			getShardIteratorRequest.setStreamName(longStream);
-			getShardIteratorRequest.setShardId(shardId);
-			getShardIteratorRequest.setShardIteratorType("TRIM_HORIZON");
-
-			GetShardIteratorResult getShardIteratorResult = kinesisClient.getShardIterator(getShardIteratorRequest);
-			shardIterator = getShardIteratorResult.getShardIterator();			
-			longIterators.put(shardId, shardIterator);
+			System.out.println(e.getMessage());
+			e.printStackTrace();				
 		}
-	}
 
+	}
+	
 	
 	/**
 	 *
@@ -122,25 +122,8 @@ public class LocalWorkerGoogle extends Thread
 		{
 			try
 			{
-				// Listen for longStream for jobs to execute
-				for (Shard shard : longShards)
-				{
-					String shardId = shard.getShardId();
-					GetRecordsRequest getRecordsRequest = new GetRecordsRequest();
-					getRecordsRequest.setShardIterator(longIterators.get(shardId));
-					getRecordsRequest.setLimit(100);
-	
-					GetRecordsResult getRecordsResult = kinesisClient.getRecords(getRecordsRequest);
-					List<Record> records = getRecordsResult.getRecords();
-					for (Record record : records)
-					{
-						String jobXML = new String(record.getData().array());
-						jobStack.push(jobXML);
-					}
-	
-					longIterators.put(shardId, getRecordsResult.getNextShardIterator());
-				}
-			} catch (ResourceNotFoundException e)
+				sleep(100);
+			} catch (Exception e)
 			{
 				// The longStream has been deleted. The workflow has completed execution
 				completed = true;

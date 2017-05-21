@@ -8,10 +8,6 @@ import org.apache.log4j.Logger;
 import com.google.cloud.ServiceOptions;
 import com.google.cloud.pubsub.spi.v1.*;
 import com.google.pubsub.v1.*;
-import com.google.api.gax.grpc.ChannelProvider;
-import com.google.api.gax.grpc.ExecutorProvider;
-import com.google.api.gax.grpc.InstantiatingExecutorProvider;
-//import com.google.api.services.pubsub.model.PubsubMessage;
 
 import com.google.protobuf.ByteString;
 import com.google.gson.Gson;
@@ -64,9 +60,6 @@ public class GoogleTransceiver
 				@Override
 				public void receiveMessage(PubsubMessage message, AckReplyConsumer consumer) 
 				{
-					// handle incoming message, then ack/nack the received message
-					System.out.println("Id : " + message.getMessageId());
-					System.out.println("Data : " + message.getData().toStringUtf8());
 					ackStack.push(message.getData().toStringUtf8().replaceAll("^\"|\"$", ""));	//Remove double quotes
 					consumer.ack();
 				}
@@ -147,7 +140,7 @@ public class GoogleTransceiver
 				.build();
 				
   			//.setAttributes(data);
-			jobSender.publish(message);
+//			jobSender.publish(message);
 
 			if (job.isLongJob)
 			{

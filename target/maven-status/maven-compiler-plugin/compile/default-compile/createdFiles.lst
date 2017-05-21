@@ -1,3 +1,4 @@
+net/qyjohn/dewev3/worker/GoogleExecutor.class
 net/qyjohn/dewev3/worker/LambdaWorker.class
 net/qyjohn/dewev3/manager/GoogleTransceiver.class
 net/qyjohn/dewev3/manager/WorkflowJob.class
@@ -11,4 +12,5 @@ net/qyjohn/dewev3/manager/GoogleTransceiver$1.class
 net/qyjohn/dewev3/worker/LocalWorkerLambda.class
 net/qyjohn/dewev3/worker/LambdaWorkerWithS3FS.class
 net/qyjohn/dewev3/manager/GoogleWorkflow.class
+net/qyjohn/dewev3/worker/LocalWorkerGoogle$1.class
 net/qyjohn/dewev3/worker/DeweExecutor.class
