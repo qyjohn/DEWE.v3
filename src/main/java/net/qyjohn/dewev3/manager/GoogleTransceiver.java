@@ -132,16 +132,8 @@ public class GoogleTransceiver
 				.putAttributes("bucket", job.bucket)
 				.putAttributes("prefix", job.prefix)
 				.putAttributes("id", job.jobId)
-				.putAttributes("name", job.jobName)
-				.putAttributes("command", job.jobCommand)
-				.putAttributes("binFiles", binFiles.trim())
-				.putAttributes("inFiles",  inFiles.trim())
-				.putAttributes("outFiles", outFiles.trim())
 				.build();
 				
-  			//.setAttributes(data);
-//			jobSender.publish(message);
-
 			if (job.isLongJob)
 			{
 				longSender.publish(message);
@@ -172,40 +164,6 @@ public class GoogleTransceiver
 		else
 		{
 			return ackStack.pop();
-		}
-	}
-
-
-	public void test()
-	{
-		try
-		{
-			PubsubMessage message = PubsubMessage.newBuilder()
-				.putAttributes("id", "ID000011")
-				.putAttributes("name", "mProjectPP")
-				.putAttributes("input", "[\"mProjectPP1\", \"mProjectPP2\", \"mProjectPP3\"]")
-				.build();
-  			//.setAttributes(data);
-			jobSender.publish(message);
-		} catch (Exception e)
-		{
-			System.out.println(e.getMessage());
-			e.printStackTrace();				
-		}
-	}
-
-	public static void main(String[] args)
-	{
-		try
-		{
-			GoogleTransceiver transceiver = new GoogleTransceiver("Test-UUID-Fake-Haha", "dewev3_jobs");
-			transceiver.test();
-			Thread.sleep(60000);
-			transceiver.cleanUp();
-		} catch (Exception e)
-		{
-			System.out.println(e.getMessage());
-			e.printStackTrace();				
 		}
 	}
 }

@@ -79,27 +79,33 @@ public class GoogleExecutor extends Thread
 	{
 			try
 			{
-				logger.debug(job.getAttributesOrThrow("command"));
-
 				workflow = job.getAttributesOrThrow("workflow");
 				bucket   = job.getAttributesOrThrow("bucket");
 				prefix   = job.getAttributesOrThrow("prefix");
 				jobId    = job.getAttributesOrThrow("id");
-				jobName  = job.getAttributesOrThrow("name");
-				command  = tempDir + "/" + job.getAttributesOrThrow("command");;
+				
+				// Download job definition file 
+				download(0, jobId);
+				SAXReader reader = new SAXReader();
+				Document document = reader.read(new FileInputStream(new File(tempDir + "/" + jobId)));
+				Element root = document.getRootElement();
+        
+//				jobName  = job.getAttributesOrThrow("name");
+//				command  = tempDir + "/" + job.getAttributesOrThrow("command");;
+				command = root.attribute("command").getValue();
 				logger.info(jobId + ":\t" + command);
 				
 
 				// Download binary and input files
 				StringTokenizer st;
-				st = new StringTokenizer(job.getAttributesOrThrow("binFiles"));
+				st = new StringTokenizer(root.attribute("binFiles").getValue());
 				while (st.hasMoreTokens()) 
 				{
 					String f = st.nextToken();
 					download(1, f);
 					runCommand("chmod u+x " + tempDir + "/" + f);
 				}
-				st = new StringTokenizer(job.getAttributesOrThrow("inFiles"));
+				st = new StringTokenizer(root.attribute("inFiles").getValue());
 				while (st.hasMoreTokens()) 
 				{
 					String f = st.nextToken();
@@ -122,7 +128,7 @@ public class GoogleExecutor extends Thread
 				p2.waitFor();
 				logger.debug(result);
 
-				st = new StringTokenizer(job.getAttributesOrThrow("outFiles"));
+				st = new StringTokenizer(root.attribute("outFiles").getValue());
 				while (st.hasMoreTokens()) 
 				{
 					String f = st.nextToken();
@@ -150,7 +156,12 @@ public class GoogleExecutor extends Thread
 		{
 			cachedFiles.put(filename, new Boolean(false));
 			String key=null, outfile = null;
-			if (type==1)	// Binary
+			if (type==0)	// Job definition
+			{
+				key = prefix + "/jobs/" + filename;
+				outfile = tempDir + "/" + filename;				
+			}
+			else if (type==1)	// Binary
 			{
 				key = prefix + "/bin/" + filename;
 				outfile = tempDir + "/" + filename;

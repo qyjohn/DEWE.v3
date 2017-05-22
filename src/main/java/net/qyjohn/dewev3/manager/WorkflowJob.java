@@ -3,6 +3,8 @@ package net.qyjohn.dewev3.manager;
 import java.util.*;
 import org.dom4j.*;
 import org.dom4j.io.SAXReader;
+import org.apache.log4j.Logger;
+
 
 public class WorkflowJob
 {
@@ -15,6 +17,7 @@ public class WorkflowJob
 	HashSet<String> outFiles 		= new HashSet<String>();
 	public boolean ready;
 	public boolean isLongJob = false;
+	final static Logger logger = Logger.getLogger(WorkflowJob.class);
 
 	/**
 	 *
@@ -30,7 +33,22 @@ public class WorkflowJob
 		jobCommand = name;
 		
 		// By default this job is ready to go, unless we find out that it has parents!
-		ready = true;
+		ready = true;		
+		logger.debug(jobXML);
+	}
+
+	public WorkflowJob(String workflow, String bucket, String prefix, String id, String name, String xml)
+	{
+		this.workflow = workflow;
+		this.bucket = bucket;
+		this.prefix = prefix;
+		this.jobId = id;
+		this.jobName = name;
+		this.jobXML = xml;
+		
+		// By default this job is ready to go, unless we find out that it has parents!
+		ready = true;		
+		logger.debug(jobXML);
 	}
 	
 	public WorkflowJob(String workflow, String bucket, String prefix, String id, Element e)

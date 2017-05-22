@@ -197,15 +197,42 @@ public class GoogleWorkflow
 			}
 		}
 		
-		// Improve the XML representation of the job
-		element.addAttribute("workflow", uuid);
-		element.addAttribute("bucket", bucket);
-		element.addAttribute("prefix", prefix);
-		element.addAttribute("command", command);		
+		// Binary, input files, output files
+		String binFiles = name, inFiles = "", outFiles = "";
+		for ( Iterator iter = element.elementIterator( "uses" ); iter.hasNext(); ) 
+		{
+			Element file = (Element) iter.next();
+			if (file.attribute("link").getValue().equals("input"))
+			{
+				// This is an input file
+				if (file.attribute("executable") != null)
+				{
+					if (file.attribute("executable").getValue().equals("true"))
+					{
+						binFiles = binFiles + " " + file.attribute("name").getValue();
+					}
+					else
+					{
+						inFiles = inFiles + " " + file.attribute("name").getValue();
+					}							
+				}
+				else
+				{
+					inFiles = inFiles + " " + file.attribute("name").getValue();
+				}							
+			}
+			else
+			{
+				outFiles = outFiles + " " + file.attribute("name").getValue();
+			}
+		}
+		
+		// XML representation
+		String xml = createXML(uuid, bucket, prefix, id, name, command, binFiles.trim(), inFiles.trim(), outFiles.trim());
 		
 		// Create a WorkflowJob object
-//		WorkflowJob job = new WorkflowJob(id, name, element.asXML());	
-		WorkflowJob job = new WorkflowJob(uuid, bucket, prefix, id, element);
+		writeJobInfo(bucket, prefix, id, xml);
+		WorkflowJob job = new WorkflowJob(uuid, bucket, prefix, id, name, xml);	
 
 		job.setCommand(command);
 		job.setLongJob(localExec);
@@ -214,7 +241,40 @@ public class GoogleWorkflow
 			job.setLongJob(true);
 		}
 		jobs.put(id, job);
-		logger.info(id + "\t" + command);
 	}
+	
+	public String createXML(String workflow, String bucket, String prefix, String id, String name, String command, String binFiles, String inFiles, String outFiles)
+	{
+		Document document = DocumentHelper.createDocument();
+		Element root = document.addElement( "root" );
+		root.addAttribute("workflow", workflow);
+		root.addAttribute("bucket",   bucket);
+		root.addAttribute("prefix",   prefix);
+		root.addAttribute("id",       id);		
+		root.addAttribute("name",     name);		
+		root.addAttribute("command",  command);		
+		root.addAttribute("binFiles", binFiles);		
+		root.addAttribute("inFiles",  inFiles);		
+		root.addAttribute("outFiles", outFiles);		
+		
+        return document.asXML();
+      }
+      
+      public void writeJobInfo(String bucket, String prefix, String id, String xml)
+      {
+	      	String key  = prefix + "/jobs/" + id;
+
+		  	try
+			{
+				logger.info("Uploading job definition " + id);
+				Bucket destBucket = storage.get(bucket);
+				Blob blob = destBucket.create(key, xml.getBytes());
+			} catch (Exception e)
+			{
+				System.out.println(e.getMessage());
+				e.printStackTrace();
+			}
+
+      }
 }
 
