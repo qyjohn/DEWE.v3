@@ -17,7 +17,6 @@ public class GoogleWorkflow
 {
 	Storage storage;
 	public ConcurrentHashMap<String, WorkflowJob> jobs;
-//	public HashMap<String, WorkflowJob> jobs;
 	public String uuid, bucket, prefix;
 	public SAXReader reader;
 	public Document document;
@@ -47,7 +46,6 @@ public class GoogleWorkflow
 			// Initialize the HashMap for workflow jobs
 			checkLongJobs();
 			jobs = new ConcurrentHashMap<String, WorkflowJob>();
-//			jobs = new HashMap<String, WorkflowJob>();
 			parseDocument();
 			parseWorkflow();	
 		} catch (Exception e)
