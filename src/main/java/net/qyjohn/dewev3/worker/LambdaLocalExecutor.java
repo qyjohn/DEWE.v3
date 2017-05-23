@@ -70,7 +70,6 @@ public class LambdaLocalExecutor extends Thread
 	{
 		try
 		{
-			logger.debug(jobXML);
 			Element job = DocumentHelper.parseText(jobXML).getRootElement();
 			workflow = job.attributeValue("workflow");
 			bucket   = job.attributeValue("bucket");
@@ -78,6 +77,9 @@ public class LambdaLocalExecutor extends Thread
 			jobId    = job.attributeValue("id");
 			jobName  = job.attributeValue("name");
 			command  = job.attributeValue("command");
+
+			logger.info(jobId + "\t" + jobName);
+			logger.debug(jobXML);
 
 			// Download binary and input files
 			StringTokenizer st;
@@ -96,7 +98,7 @@ public class LambdaLocalExecutor extends Thread
 			}
 
 			// Execute the command and wait for it to complete
-			runCommand(command, tempDir);
+			runCommand(tempDir + "/" + command, tempDir);
 
 			// Upload output files
 			st = new StringTokenizer(job.attribute("outFiles").getValue());
@@ -237,7 +239,7 @@ public class LambdaLocalExecutor extends Thread
 		{
 			logger.debug(command);
 
-			String env_path = "PATH=$PATH:" + dir;
+			String env_path = "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:" + dir;
 			String env_lib = "LD_LIBRARY_PATH=$LD_LIBRARY_PATH:" + dir;
 			String[] env = {env_path, env_lib};
 			Process p = Runtime.getRuntime().exec(command, env, new File(dir));

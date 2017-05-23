@@ -264,7 +264,7 @@ public class GoogleWorkflow
 
 		  	try
 			{
-				logger.info("Uploading job definition " + id);
+				logger.debug("Uploading job definition " + id);
 				Bucket destBucket = storage.get(bucket);
 				Blob blob = destBucket.create(key, xml.getBytes());
 			} catch (Exception e)

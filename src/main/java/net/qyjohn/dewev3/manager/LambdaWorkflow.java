@@ -267,7 +267,7 @@ public class LambdaWorkflow
 
 		  	try
 			{
-				logger.info("Uploading job definition " + id);
+				logger.debug("Uploading job definition " + id);
 				client.putObject(bucket, key, xml);
 			} catch (Exception e)
 			{

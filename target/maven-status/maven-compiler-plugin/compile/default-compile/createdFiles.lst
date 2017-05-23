@@ -10,5 +10,4 @@ net/qyjohn/dewev3/manager/GoogleWorkflow.class
 net/qyjohn/dewev3/worker/GoogleLocalWorker$1.class
 net/qyjohn/dewev3/manager/LambdaWorkflow.class
 net/qyjohn/dewev3/worker/LambdaLocalWorker.class
-net/qyjohn/dewev3/worker/DeweExecutor.class
 net/qyjohn/dewev3/worker/GoogleLocalWorker.class

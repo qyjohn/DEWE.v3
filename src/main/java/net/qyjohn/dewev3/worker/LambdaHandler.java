@@ -21,7 +21,6 @@ public class LambdaHandler
 	// Common components
 	public AmazonS3Client s3Client;
 	public AmazonKinesisClient kinesisClient;
-	public String tempDir = "/tmp";
 	public String workflow, bucket, prefix, jobId, jobName, command;
 	// Logging
 	final static Logger logger = Logger.getLogger(LambdaHandler.class);
@@ -35,12 +34,22 @@ public class LambdaHandler
 	 
 	public LambdaHandler()
 	{
-		tempDir = "/tmp/" + UUID.randomUUID().toString();
 		s3Client = new AmazonS3Client();
 		kinesisClient = new AmazonKinesisClient();
 	}
 
-	
+	/**
+	 *
+	 * The only purpose of this handler is to clean up the /tmp disk space.
+	 *
+	 */
+
+	public void cleanUpHandler(KinesisEvent event)
+	{
+		runCommand("rm -Rf /tmp/*", "/tmp");
+		runCommand("df -h", "/tmp");		
+	}
+
 	/**
 	 *
 	 * When the job handler runs on an EC2 instance, it is a function triggered by Lambda.
@@ -68,7 +77,10 @@ public class LambdaHandler
 	{
 		try
 		{
-			logger.debug(jobXML);
+			// Each job runs in its very own temp folder
+			String tempDir = "/tmp/" + UUID.randomUUID().toString();
+			runCommand("mkdir -p " + tempDir, "/tmp");
+
 			Element job = DocumentHelper.parseText(jobXML).getRootElement();
 			workflow = job.attributeValue("workflow");
 			bucket   = job.attributeValue("bucket");
@@ -77,47 +89,38 @@ public class LambdaHandler
 			jobName  = job.attributeValue("name");
 			command  = job.attributeValue("command");
 
+			logger.info(jobId + "\t" + jobName);
+			logger.debug(jobXML);
+
 			// Download binary and input files
 			StringTokenizer st;
 			st = new StringTokenizer(job.attribute("binFiles").getValue());
 			while (st.hasMoreTokens()) 
 			{
 				String f = st.nextToken();
-				download(1, f);
+				download(1, tempDir, f);
 				runCommand("chmod u+x " + tempDir + "/" + f, tempDir);
 			}
 			st = new StringTokenizer(job.attribute("inFiles").getValue());
 			while (st.hasMoreTokens()) 
 			{
 				String f = st.nextToken();
-				download(2, f);
+				download(2, tempDir, f);
 			}
 
 			// Execute the command and wait for it to complete
-			runCommand(command, tempDir);
+			runCommand(tempDir + "/" + command, tempDir);
 
-/*			String env_path = "PATH=$PATH:" + tempDir;
-			String env_lib = "LD_LIBRARY_PATH=$LD_LIBRARY_PATH:" + tempDir;
-			String[] env = {env_path, env_lib};
-			Process p2 = Runtime.getRuntime().exec(command, env, new File(tempDir));
-			BufferedReader in = new BufferedReader(new InputStreamReader(p2.getInputStream()));
-			String result = "";
-			String line;
-			while ((line = in.readLine()) != null) 
-			{
-				result = result + line + "\n";
-			}       
-			in.close();
-			p2.waitFor();
-			logger.debug(result);
-*/
-
+			// Upload output files
 			st = new StringTokenizer(job.attribute("outFiles").getValue());
 			while (st.hasMoreTokens()) 
 			{
 				String f = st.nextToken();
-				upload(f);
+				upload(tempDir, f);
 			}
+
+			// Delete all binary, input, output
+			runCommand("rm -Rf " + tempDir, "/tmp");
 
 			// Acknowledge the job to be completed
 			ackJob(workflow, jobId);
@@ -134,18 +137,18 @@ public class LambdaHandler
 	 *
 	 */
 	 
-	public void download(int type, String filename)
+	public void download(int type, String dir, String filename)
 	{
 		String key=null, outfile = null;
 		if (type==1)	// Binary
 		{
 			key = prefix + "/bin/" + filename;
-			outfile = tempDir + "/" + filename;
+			outfile = dir + "/" + filename;
 		}
 		else	// Data
 		{
 			key = prefix + "/workdir/" + filename;
-			outfile = tempDir + "/" + filename;
+			outfile = dir + "/" + filename;
 		}
 		
 		try
@@ -170,10 +173,10 @@ public class LambdaHandler
 	 *
 	 */
 	 
-	public void upload(String filename)
+	public void upload(String dir, String filename)
 	{
 		String key  = prefix + "/workdir/" + filename;
-		String file = tempDir + "/" + filename;
+		String file = dir + "/" + filename;
 
 		try
 		{
@@ -221,9 +224,9 @@ public class LambdaHandler
 	{
 		try
 		{
-			logger.info(command);
+			logger.debug(command);
 
-			String env_path = "PATH=$PATH:" + dir;
+			String env_path = "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:" + dir;
 			String env_lib = "LD_LIBRARY_PATH=$LD_LIBRARY_PATH:" + dir;
 			String[] env = {env_path, env_lib};
 			Process p = Runtime.getRuntime().exec(command, env, new File(dir));
@@ -236,7 +239,7 @@ public class LambdaHandler
 			}       
 			in.close();
 			p.waitFor();
-			logger.info(result);
+			logger.debug(result);
 		} catch (Exception e) 
 		{
 			logger.error(e.getMessage());
