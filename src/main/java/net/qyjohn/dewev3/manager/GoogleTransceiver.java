@@ -10,7 +10,6 @@ import com.google.cloud.pubsub.spi.v1.*;
 import com.google.pubsub.v1.*;
 
 import com.google.protobuf.ByteString;
-import com.google.gson.Gson;
 
 
 public class GoogleTransceiver
@@ -108,22 +107,6 @@ public class GoogleTransceiver
 	public void publishJob(WorkflowJob job)
 	{
 		logger.info("Dispatching " + job.jobId + ":\t" + job.jobName);
-		Gson gson = new Gson();
-		String binFiles = "";
-		for (String s : job.binFiles)
-		{
-			binFiles = binFiles + s + " ";
-		}
-		String inFiles = "";
-		for (String s : job.inFiles)
-		{
-			inFiles = inFiles + s + " ";
-		}
-		String outFiles = "";
-		for (String s : job.outFiles)
-		{
-			outFiles = outFiles + s + " ";
-		}
 
 		try
 		{
