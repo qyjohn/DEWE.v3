@@ -232,7 +232,7 @@ public class LambdaWorkflow
 		String xml = createXML(uuid, bucket, prefix, id, name, command, binFiles.trim(), inFiles.trim(), outFiles.trim());
 		
 		// Create a WorkflowJob object
-		writeJobInfo(bucket, prefix, id, xml);
+//		writeJobInfo(bucket, prefix, id, xml);
 		WorkflowJob job = new WorkflowJob(uuid, bucket, prefix, id, name, xml);	
 
 		job.setCommand(command);

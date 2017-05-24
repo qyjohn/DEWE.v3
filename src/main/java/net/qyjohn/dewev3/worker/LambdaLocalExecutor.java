@@ -52,11 +52,28 @@ public class LambdaLocalExecutor extends Thread
 				if (!jobStack.empty())
 				{
 					String jobXML = jobStack.pop();
-					executeJob(jobXML);
+					boolean retry = true;
+					int i = 1;
+					while (retry)
+					{
+						try
+						{
+							executeJob(jobXML);
+							retry = false;
+						} catch (Exception e1)
+						{
+							logger.error(jobId + "\t" + jobName);
+							logger.error(command);
+							logger.error(e1.getMessage());
+							e1.printStackTrace();
+							sleep(i*1000);
+							i++;
+						}						
+					}
 				}
 				else
 				{
-					sleep(new Random().nextInt(100));
+					sleep(new Random().nextInt(200));
 				}
 			} catch (Exception e)
 			{
@@ -66,10 +83,8 @@ public class LambdaLocalExecutor extends Thread
 		}
 	}
 
-	public void executeJob(String jobXML)
+	public void executeJob(String jobXML) throws Exception
 	{
-		try
-		{
 			Element job = DocumentHelper.parseText(jobXML).getRootElement();
 			workflow = job.attributeValue("workflow");
 			bucket   = job.attributeValue("bucket");
@@ -78,7 +93,7 @@ public class LambdaLocalExecutor extends Thread
 			jobName  = job.attributeValue("name");
 			command  = job.attributeValue("command");
 
-			logger.info(jobId + "\t" + jobName);
+			logger.debug(jobId + "\t" + jobName);
 			logger.debug(jobXML);
 
 			// Download binary and input files
@@ -110,11 +125,6 @@ public class LambdaLocalExecutor extends Thread
 
 			// Acknowledge the job to be completed
 			ackJob(workflow, jobId);
-		} catch (Exception e)
-		{
-			System.out.println(e.getMessage());
-			e.printStackTrace();
-		}
 	}
 	
 	/**
@@ -123,7 +133,7 @@ public class LambdaLocalExecutor extends Thread
 	 *
 	 */
 	 
-	public void download(int type, String filename)
+	public void download(int type, String filename) throws Exception
 	{
 		if (cachedFiles.get(filename) == null)
 		{
@@ -140,8 +150,6 @@ public class LambdaLocalExecutor extends Thread
 				outfile = tempDir + "/" + filename;
 			}
 		
-			try
-			{
 				logger.debug("Downloading " + outfile);
 				S3Object object = s3Client.getObject(new GetObjectRequest(bucket, key));
 				InputStream in = object.getObjectContent();
@@ -149,11 +157,6 @@ public class LambdaLocalExecutor extends Thread
 				IOUtils.copy(in, out);
 				in.close();
 				out.close();
-			} catch (Exception e)
-			{
-				System.out.println(e.getMessage());
-				e.printStackTrace();
-			}
 			cachedFiles.put(filename, new Boolean(true));
 		}
 		else
@@ -162,7 +165,7 @@ public class LambdaLocalExecutor extends Thread
 			{
 				try
 				{
-					sleep(50);
+					sleep(100);
 				} catch (Exception e)
 				{
 					System.out.println(e.getMessage());
@@ -178,7 +181,7 @@ public class LambdaLocalExecutor extends Thread
 	 *
 	 */
 	 
-	public void upload(String filename)
+	public void upload(String filename) throws Exception 
 	{
 		if (caching)
 		{
@@ -187,15 +190,8 @@ public class LambdaLocalExecutor extends Thread
 		String key  = prefix + "/workdir/" + filename;
 		String file = tempDir + "/" + filename;
 
-		try
-		{
 			logger.debug("Uploading " + file);
 			s3Client.putObject(new PutObjectRequest(bucket, key, new File(file)));
-		} catch (Exception e)
-		{
-			System.out.println(e.getMessage());
-			e.printStackTrace();
-		}
 		if (caching)
 		{
 			cachedFiles.put(filename, new Boolean(true));
@@ -233,10 +229,9 @@ public class LambdaLocalExecutor extends Thread
 	 *
 	 */
 	 
-	public void runCommand(String command, String dir)
+	public void runCommand(String command, String dir) throws Exception
 	{
-		try
-		{
+
 			logger.debug(command);
 
 			String env_path = "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:" + dir;
@@ -253,10 +248,5 @@ public class LambdaLocalExecutor extends Thread
 			in.close();
 			p.waitFor();
 			logger.debug(result);
-		} catch (Exception e) 
-		{
-			logger.error(e.getMessage());
-			logger.error(e.getStackTrace());
-		}
 	}
 }
