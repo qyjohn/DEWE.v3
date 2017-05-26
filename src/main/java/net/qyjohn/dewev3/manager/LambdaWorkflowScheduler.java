@@ -163,7 +163,7 @@ public class LambdaWorkflowScheduler extends Thread
 
 		if (job != null)
 		{
-			logger.debug("Dispatching " + job.jobId + ":\t" + job.jobName);
+			logger.info("Dispatching " + job.jobId + ":\t" + job.jobName);
 
 			byte[] bytes = job.jobXML.getBytes();
 			PutRecordRequest putRecord = new PutRecordRequest();
@@ -246,7 +246,7 @@ public class LambdaWorkflowScheduler extends Thread
 				for (Record record : records)
 				{
 					String job = new String(record.getData().array());
-					logger.debug(job + " is now completed.");
+					logger.info(job + " is now completed.");
 					setJobAsComplete(job);
 				}
 

@@ -52,24 +52,7 @@ public class LambdaLocalExecutor extends Thread
 				if (!jobStack.empty())
 				{
 					String jobXML = jobStack.pop();
-					boolean retry = true;
-					int i = 1;
-					while (retry)
-					{
-						try
-						{
-							executeJob(jobXML);
-							retry = false;
-						} catch (Exception e1)
-						{
-							logger.error(jobId + "\t" + jobName);
-							logger.error(command);
-							logger.error(e1.getMessage());
-							e1.printStackTrace();
-							sleep(i*1000);
-							i++;
-						}						
-					}
+					executeJob(jobXML);
 				}
 				else
 				{
@@ -83,8 +66,10 @@ public class LambdaLocalExecutor extends Thread
 		}
 	}
 
-	public void executeJob(String jobXML) throws Exception
+	public void executeJob(String jobXML) 
 	{
+		try
+		{
 			Element job = DocumentHelper.parseText(jobXML).getRootElement();
 			workflow = job.attributeValue("workflow");
 			bucket   = job.attributeValue("bucket");
@@ -93,111 +78,197 @@ public class LambdaLocalExecutor extends Thread
 			jobName  = job.attributeValue("name");
 			command  = job.attributeValue("command");
 
-			logger.debug(jobId + "\t" + jobName);
+			logger.info(jobId + "\t" + jobName);
 			logger.debug(jobXML);
 
 			// Download binary and input files
-			StringTokenizer st;
-			st = new StringTokenizer(job.attribute("binFiles").getValue());
-			while (st.hasMoreTokens()) 
-			{
-				String f = st.nextToken();
-				download(1, f);
-				runCommand("chmod u+x " + tempDir + "/" + f, tempDir);
-			}
-			st = new StringTokenizer(job.attribute("inFiles").getValue());
-			while (st.hasMoreTokens()) 
-			{
-				String f = st.nextToken();
-				download(2, f);
-			}
+			download("bin", job.attribute("binFiles").getValue());
+			download("workdir", job.attribute("inFiles").getValue());
+			runCommand("chmod u+x " + tempDir + "/" + job.attribute("binFiles").getValue(), tempDir);
 
 			// Execute the command and wait for it to complete
 			runCommand(tempDir + "/" + command, tempDir);
 
 			// Upload output files
-			st = new StringTokenizer(job.attribute("outFiles").getValue());
+			upload(job.attribute("outFiles").getValue());
+/*			StringTokenizer st = new StringTokenizer(job.attribute("outFiles").getValue());
 			while (st.hasMoreTokens()) 
 			{
 				String f = st.nextToken();
 				upload(f);
 			}
+*/
+		} catch (Exception e)
+		{
+			System.out.println(jobXML);
+			System.out.println(e.getMessage());
+			e.printStackTrace();
+		}
 
-			// Acknowledge the job to be completed
-			ackJob(workflow, jobId);
+		// Acknowledge the job to be completed
+		ackJob(workflow, jobId);
 	}
+
+	
 	
 	/**
 	 *
 	 * Download binary and input data from S3 to the execution folder.
 	 *
 	 */
-	 
-	public void download(int type, String filename) throws Exception
+	
+	public void download(String folder, String files)
 	{
-		if (cachedFiles.get(filename) == null)
+		try
 		{
-			cachedFiles.put(filename, new Boolean(false));
-			String key=null, outfile = null;
-			if (type==1)	// Binary
+			// Extract all files to download
+			StringTokenizer st;
+			st = new StringTokenizer(files);
+			List<String> list = new ArrayList<String> ();
+			while (st.hasMoreTokens()) 
 			{
-				key = prefix + "/bin/" + filename;
-				outfile = tempDir + "/" + filename;
+				list.add(st.nextToken());
 			}
-			else	// Data
+			// Download in a mutlti-thread fashion
+			if (!list.isEmpty())
 			{
-				key = prefix + "/workdir/" + filename;
-				outfile = tempDir + "/" + filename;
-			}
-		
-				logger.debug("Downloading " + outfile);
-				S3Object object = s3Client.getObject(new GetObjectRequest(bucket, key));
-				InputStream in = object.getObjectContent();
-				OutputStream out = new FileOutputStream(outfile);
-				IOUtils.copy(in, out);
-				in.close();
-				out.close();
-			cachedFiles.put(filename, new Boolean(true));
-		}
-		else
-		{
-			while (cachedFiles.get(filename).booleanValue() == false)
-			{
-				try
+				Downloader downloader[] = new Downloader[list.size()];
+				for (int i=0; i<list.size(); i++)
 				{
-					sleep(100);
-				} catch (Exception e)
+					downloader[i] = new Downloader(folder, list.get(i));
+					downloader[i].start();
+				}
+				for (int i=0; i<list.size(); i++)
 				{
-					System.out.println(e.getMessage());
-					e.printStackTrace();
+					downloader[i].join();
 				}
 			}
-		}			
+		} catch (Exception e)
+		{
+			System.out.println(e.getMessage());
+			e.printStackTrace();
+		}
 	}
 
+	class Downloader extends Thread
+	{
+		String folder, filename;
+
+		public Downloader(String folder, String filename)
+		{
+			this.folder = folder;
+			this.filename = filename;
+		}
+
+		public void run()
+		{
+			try
+			{
+				if (cachedFiles.get(filename) == null)
+				{
+					cachedFiles.put(filename, new Boolean(false));
+					String key     = prefix + "/" + folder + "/" + filename;
+					String outfile = tempDir + "/" + filename;
+		
+					logger.debug("Downloading " + outfile);
+					S3Object object = s3Client.getObject(new GetObjectRequest(bucket, key));
+					InputStream in = object.getObjectContent();
+					OutputStream out = new FileOutputStream(outfile);
+					IOUtils.copy(in, out);
+					in.close();
+					out.close();
+					cachedFiles.put(filename, new Boolean(true));
+				}
+				else
+				{
+					while (cachedFiles.get(filename).booleanValue() == false)
+					{
+						try
+						{
+							sleep(100);
+						} catch (Exception e)
+						{
+							System.out.println(e.getMessage());
+							e.printStackTrace();
+						}
+					}
+				}
+			} catch (Exception e)
+			{
+				System.out.println(e.getMessage());
+				e.printStackTrace();
+			}
+		}
+	}
+ 
 	/**
 	 *
 	 * Upload output data to S3
 	 *
 	 */
 	 
-	public void upload(String filename) throws Exception 
+	public void upload(String files) 
 	{
-		if (caching)
+		try
 		{
-			cachedFiles.put(filename, new Boolean(false));
-		}
-		String key  = prefix + "/workdir/" + filename;
-		String file = tempDir + "/" + filename;
-
-			logger.debug("Uploading " + file);
-			s3Client.putObject(new PutObjectRequest(bucket, key, new File(file)));
-		if (caching)
+			// Extract all files to upload
+			StringTokenizer st;
+			st = new StringTokenizer(files);
+			List<String> list = new ArrayList<String> ();
+			while (st.hasMoreTokens()) 
+			{
+				list.add(st.nextToken());
+			}
+			// Upload in a mutlti-thread fashion
+			if (!list.isEmpty())
+			{
+				Uploader uploader[] = new Uploader[list.size()];
+				for (int i=0; i<list.size(); i++)
+				{
+					uploader[i] = new Uploader(list.get(i));
+					uploader[i].start();
+				}
+				for (int i=0; i<list.size(); i++)
+				{
+					uploader[i].join();
+				}
+			}
+		} catch (Exception e)
 		{
-			cachedFiles.put(filename, new Boolean(true));
+			System.out.println(e.getMessage());
+			e.printStackTrace();
 		}
 	}
 	
+	class Uploader extends Thread
+	{
+		public String filename;
+
+		public Uploader(String filename)
+		{
+			this.filename = filename;
+		}
+
+		public void run()
+		{
+			try
+			{
+				cachedFiles.put(filename, new Boolean(false));
+				String key  = prefix + "/workdir/" + filename;
+				String file = tempDir + "/" + filename;
+
+				logger.debug("Uploading " + file);
+				s3Client.putObject(new PutObjectRequest(bucket, key, new File(file)));
+				cachedFiles.put(filename, new Boolean(true));
+			} catch (Exception e)
+			{
+				System.out.println(e.getMessage());
+				e.printStackTrace();
+			}
+		}
+
+	}
+
 	/**
 	 *
 	 * ACK to the workflow scheduler that the job is now completed
@@ -230,8 +301,7 @@ public class LambdaLocalExecutor extends Thread
 	 */
 	 
 	public void runCommand(String command, String dir) throws Exception
-	{
-
+	{ 
 			logger.debug(command);
 
 			String env_path = "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:" + dir;

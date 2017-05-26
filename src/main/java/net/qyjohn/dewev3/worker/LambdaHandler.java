@@ -22,6 +22,10 @@ public class LambdaHandler
 	public AmazonS3Client s3Client;
 	public AmazonKinesisClient kinesisClient;
 	public String workflow, bucket, prefix, jobId, jobName, command;
+	// Cached binaries, input and output files
+	public String tempDir;
+	public HashMap<String, Boolean> cachedFiles;
+
 	// Logging
 	final static Logger logger = Logger.getLogger(LambdaHandler.class);
 
@@ -58,6 +62,13 @@ public class LambdaHandler
 
 	public void dewev3Handler(KinesisEvent event)
 	{
+		// Create temporary execution folder
+		tempDir = "/tmp/" + UUID.randomUUID().toString();
+		runCommand("mkdir -p " + tempDir, "/tmp");
+		
+		// Create a new HashMap for cached files
+		cachedFiles = new HashMap<String, Boolean>();
+		
 		for(KinesisEvent.KinesisEventRecord rec : event.getRecords())
 		{
 			try
@@ -71,16 +82,15 @@ public class LambdaHandler
 				e.printStackTrace();
 			}
 		}
+		
+		// Clean up temporary execution folder
+		runCommand("rm -Rf " + tempDir, "/tmp");
 	}
 
 	public void executeJob(String jobXML)
 	{
 		try
 		{
-			// Each job runs in its very own temp folder
-			String tempDir = "/tmp/" + UUID.randomUUID().toString();
-			runCommand("mkdir -p " + tempDir, "/tmp");
-
 			Element job = DocumentHelper.parseText(jobXML).getRootElement();
 			workflow = job.attributeValue("workflow");
 			bucket   = job.attributeValue("bucket");
@@ -98,14 +108,14 @@ public class LambdaHandler
 			while (st.hasMoreTokens()) 
 			{
 				String f = st.nextToken();
-				download(1, tempDir, f);
+				download(1, f);
 				runCommand("chmod u+x " + tempDir + "/" + f, tempDir);
 			}
 			st = new StringTokenizer(job.attribute("inFiles").getValue());
 			while (st.hasMoreTokens()) 
 			{
 				String f = st.nextToken();
-				download(2, tempDir, f);
+				download(2, f);
 			}
 
 			// Execute the command and wait for it to complete
@@ -116,19 +126,16 @@ public class LambdaHandler
 			while (st.hasMoreTokens()) 
 			{
 				String f = st.nextToken();
-				upload(tempDir, f);
+				upload(f);
 			}
-
-			// Delete all binary, input, output
-			runCommand("rm -Rf " + tempDir, "/tmp");
-
-			// Acknowledge the job to be completed
-			ackJob(workflow, jobId);
 		} catch (Exception e)
 		{
 			System.out.println(e.getMessage());
 			e.printStackTrace();
 		}
+			// Acknowledge the job to be completed
+			ackJob(workflow, jobId);
+
 	}
 	
 	/**
@@ -137,7 +144,7 @@ public class LambdaHandler
 	 *
 	 */
 	 
-	public void download(int type, String dir, String filename)
+/*	public void download(int type, String dir, String filename)
 	{
 		String key=null, outfile = null;
 		if (type==1)	// Binary
@@ -166,6 +173,50 @@ public class LambdaHandler
 			e.printStackTrace();
 		}		
 	}
+*/
+
+	public void download(int type, String filename) throws Exception
+	{
+		if (cachedFiles.get(filename) == null)
+		{
+			cachedFiles.put(filename, new Boolean(false));
+			String key=null, outfile = null;
+			if (type==1)	// Binary
+			{
+				key = prefix + "/bin/" + filename;
+				outfile = tempDir + "/" + filename;
+			}
+			else	// Data
+			{
+				key = prefix + "/workdir/" + filename;
+				outfile = tempDir + "/" + filename;
+			}
+		
+			logger.debug("Downloading " + outfile);
+			S3Object object = s3Client.getObject(new GetObjectRequest(bucket, key));
+			InputStream in = object.getObjectContent();
+			OutputStream out = new FileOutputStream(outfile);
+			IOUtils.copy(in, out);
+			in.close();
+			out.close();
+			cachedFiles.put(filename, new Boolean(true));
+		}
+		else
+		{
+			while (cachedFiles.get(filename).booleanValue() == false)
+			{
+				try
+				{
+					Thread.sleep(100);
+				} catch (Exception e)
+				{
+					System.out.println(e.getMessage());
+					e.printStackTrace();
+				}
+			}
+		}			
+	}
+
 
 	/**
 	 *
@@ -173,7 +224,7 @@ public class LambdaHandler
 	 *
 	 */
 	 
-	public void upload(String dir, String filename)
+/*	public void upload(String dir, String filename)
 	{
 		String key  = prefix + "/workdir/" + filename;
 		String file = dir + "/" + filename;
@@ -182,6 +233,25 @@ public class LambdaHandler
 		{
 			logger.debug("Uploading " + file);
 			s3Client.putObject(new PutObjectRequest(bucket, key, new File(file)));
+		} catch (Exception e)
+		{
+			System.out.println(e.getMessage());
+			e.printStackTrace();
+		}
+	}
+*/
+
+	public void upload(String filename) throws Exception 
+	{
+		try
+		{
+			cachedFiles.put(filename, new Boolean(false));
+			String key  = prefix + "/workdir/" + filename;
+			String file = tempDir + "/" + filename;
+
+			logger.debug("Uploading " + file);
+			s3Client.putObject(new PutObjectRequest(bucket, key, new File(file)));
+			cachedFiles.put(filename, new Boolean(true));			
 		} catch (Exception e)
 		{
 			System.out.println(e.getMessage());
