@@ -7,13 +7,17 @@ import com.amazonaws.services.s3.*;
 import com.amazonaws.services.s3.model.*;
 import com.amazonaws.services.kinesis.*;
 import com.amazonaws.services.kinesis.model.*;
+import com.amazonaws.services.sqs.*;
+import com.amazonaws.services.sqs.model.*;
 import net.qyjohn.dewev3.worker.*;
 import org.apache.log4j.Logger;
 
 public class LambdaWorkflowScheduler extends Thread
 {
-	public AmazonKinesisClient client;
+	public AmazonKinesisClient kinesisClient;
+	public AmazonSQSClient sqsClient = new AmazonSQSClient();
 	String jobStream, longStream, ackStream;
+	String longQueue;
 	List<Shard> ackShards = new ArrayList<Shard>();
 	Map<String, String> ackIterators = new HashMap<String, String>();
 
@@ -33,6 +37,7 @@ public class LambdaWorkflowScheduler extends Thread
 			InputStream input = new FileInputStream("config.properties");
 			prop.load(input);
 			jobStream = prop.getProperty("jobStream");
+			longQueue = prop.getProperty("longQueue");
 			localExec = Boolean.parseBoolean(prop.getProperty("localExec"));
 			cleanUp   = Boolean.parseBoolean(prop.getProperty("cleanUp"));
 	
@@ -41,7 +46,7 @@ public class LambdaWorkflowScheduler extends Thread
 			uuid = "DEWEv3-" + UUID.randomUUID().toString();
 			ackStream = uuid;
 			longStream = ackStream + "-Long-Jobs";
-			client = new AmazonKinesisClient();
+			kinesisClient = new AmazonKinesisClient();
 			createStream(ackStream);	// The Kinesis stream to receive ACK messages 
 			createStream(longStream);	// The Kinesis stream to publish long running jobs 
 			listAckShards();
@@ -69,7 +74,7 @@ public class LambdaWorkflowScheduler extends Thread
 		CreateStreamRequest createStreamRequest = new CreateStreamRequest();
 		createStreamRequest.setStreamName(stream);
 		createStreamRequest.setShardCount(1);
-		client.createStream(createStreamRequest);
+		kinesisClient.createStream(createStreamRequest);
 
 		DescribeStreamRequest describeStreamRequest = new DescribeStreamRequest();
 		describeStreamRequest.setStreamName(stream);
@@ -81,7 +86,7 @@ public class LambdaWorkflowScheduler extends Thread
 			{
 				logger.info("Waiting for stream " + stream + " to become active...");
 				Thread.sleep(10 * 1000);
-				DescribeStreamResult describeStreamResponse = client.describeStream( describeStreamRequest );
+				DescribeStreamResult describeStreamResponse = kinesisClient.describeStream( describeStreamRequest );
 				String streamStatus = describeStreamResponse.getStreamDescription().getStreamStatus();
 				if ( streamStatus.equals( "ACTIVE" ) ) 
 				{
@@ -105,7 +110,7 @@ public class LambdaWorkflowScheduler extends Thread
 		do 
 		{
 			describeStreamRequest.setExclusiveStartShardId( exclusiveStartShardId );
-			DescribeStreamResult describeStreamResult = client.describeStream( describeStreamRequest );
+			DescribeStreamResult describeStreamResult = kinesisClient.describeStream( describeStreamRequest );
 			ackShards.addAll( describeStreamResult.getStreamDescription().getShards() );
 			if (describeStreamResult.getStreamDescription().getHasMoreShards() && ackShards.size() > 0) 
 			{
@@ -126,7 +131,7 @@ public class LambdaWorkflowScheduler extends Thread
 			getShardIteratorRequest.setShardId(shardId);
 			getShardIteratorRequest.setShardIteratorType("TRIM_HORIZON");
 
-			GetShardIteratorResult getShardIteratorResult = client.getShardIterator(getShardIteratorRequest);
+			GetShardIteratorResult getShardIteratorResult = kinesisClient.getShardIterator(getShardIteratorRequest);
 			shardIterator = getShardIteratorResult.getShardIterator();			
 			ackIterators.put(shardId, shardIterator);
 		}
@@ -135,7 +140,7 @@ public class LambdaWorkflowScheduler extends Thread
 	
 	public void deleteStream(String stream)
 	{
-		client.deleteStream(stream);	
+		kinesisClient.deleteStream(stream);	
 	}
 	
 	public void initialDispatch()
@@ -164,7 +169,7 @@ public class LambdaWorkflowScheduler extends Thread
 		if (job != null)
 		{
 			logger.info("Dispatching " + job.jobId + ":\t" + job.jobName);
-
+/*
 			byte[] bytes = job.jobXML.getBytes();
 			PutRecordRequest putRecord = new PutRecordRequest();
 			if (job.isLongJob)
@@ -181,6 +186,28 @@ public class LambdaWorkflowScheduler extends Thread
 			try 
 			{
 				client.putRecord(putRecord);
+			} catch (Exception e) 
+			{
+				System.out.println(e.getMessage());
+				e.printStackTrace();	
+			}
+*/
+			try
+			{
+				if (job.isLongJob)
+				{
+					sqsClient.sendMessage(longQueue, job.jobXML);;				
+				}
+				else
+				{
+					byte[] bytes = job.jobXML.getBytes();
+					PutRecordRequest putRecord = new PutRecordRequest();
+					putRecord.setStreamName(jobStream);
+					putRecord.setPartitionKey(UUID.randomUUID().toString());
+					putRecord.setData(ByteBuffer.wrap(bytes));
+					kinesisClient.putRecord(putRecord);
+				}
+				
 			} catch (Exception e) 
 			{
 				System.out.println(e.getMessage());
@@ -241,7 +268,7 @@ public class LambdaWorkflowScheduler extends Thread
 				getRecordsRequest.setShardIterator(ackIterators.get(shardId));
 				getRecordsRequest.setLimit(100);
 
-				GetRecordsResult getRecordsResult = client.getRecords(getRecordsRequest);
+				GetRecordsResult getRecordsResult = kinesisClient.getRecords(getRecordsRequest);
 				List<Record> records = getRecordsResult.getRecords();
 				for (Record record : records)
 				{
