@@ -95,6 +95,11 @@ public class LambdaHandler
 
 	public void parallelHandler(KinesisEvent event)
 	{
+		ClientConfiguration clientConfig = new ClientConfiguration();
+		clientConfig.setMaxConnections(1000);
+		clientConfig.setSocketTimeout(60*1000);
+		s3Client = new AmazonS3Client(clientConfig);
+
 		// Create temporary execution folder
 		tempDir = "/tmp/" + UUID.randomUUID().toString();
 		runCommand("mkdir -p " + tempDir, "/tmp");
@@ -527,12 +532,41 @@ public class LambdaHandler
 				String outfile = tempDir + "/" + filename;
 		
 				logger.debug("Downloading " + key + " to " + outfile);
-				S3Object object = s3Client.getObject(new GetObjectRequest(bucket, key));
+/*				S3Object object = s3Client.getObject(new GetObjectRequest(bucket, key));
 				InputStream in = object.getObjectContent();
 				OutputStream out = new FileOutputStream(outfile);
 				IOUtils.copy(in, out);
 				in.close();
 				out.close();
+*/
+					boolean success = false;
+					while (!success)
+					{
+						try
+						{
+							S3Object object = s3Client.getObject(new GetObjectRequest(bucket, key));
+							InputStream in = object.getObjectContent();
+							OutputStream out = new FileOutputStream(outfile);
+		//					IOUtils.copy(in, out);
+		
+							int read = 0;
+							byte[] bytes = new byte[1024];
+							while ((read = in.read(bytes)) != -1) 
+							{
+								out.write(bytes, 0, read);
+							}
+							in.close();
+							out.close();
+							success = true;
+						} catch (Exception e1)
+						{
+							logger.error("Error downloading " + outfile);
+							logger.error("Retry after 200 ms... ");
+							System.out.println(e1.getMessage());
+							e1.printStackTrace();
+							sleep(200);
+						}
+					}
 			} catch (Exception e)
 			{
 				System.out.println(e.getMessage());
@@ -558,7 +592,23 @@ public class LambdaHandler
 				String file = tempDir + "/" + filename;
 
 				logger.debug("Uploading " + file);
-				s3Client.putObject(new PutObjectRequest(bucket, key, new File(file)));
+//				s3Client.putObject(new PutObjectRequest(bucket, key, new File(file)));
+				boolean success = false;
+				while (!success)
+				{
+					try
+					{
+						s3Client.putObject(new PutObjectRequest(bucket, key, new File(file)));
+						success = true;
+					} catch (Exception e1)
+					{
+						logger.error("Error uploading " + file);
+						logger.error("Retry after 200 ms...");
+						System.out.println(e1.getMessage());
+						e1.printStackTrace();						
+						sleep(200);
+					}
+				}
 			} catch (Exception e)
 			{
 				System.out.println(e.getMessage());

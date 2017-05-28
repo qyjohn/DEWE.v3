@@ -4,6 +4,7 @@ import java.io.*;
 import java.nio.*;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import com.amazonaws.ClientConfiguration;
 import com.amazonaws.services.lambda.runtime.*; 
 import com.amazonaws.services.lambda.runtime.events.*;
 import com.amazonaws.services.s3.*;
@@ -29,9 +30,12 @@ public class LambdaLocalExecutor extends Thread
 	// Logging
 	final static Logger logger = Logger.getLogger(LambdaLocalExecutor.class);
 	 
-	public LambdaLocalExecutor(AmazonS3Client s3Client, AmazonKinesisClient kinesisClient, String tempDir, ConcurrentHashMap<String, Boolean> cachedFiles)
+	public LambdaLocalExecutor(AmazonKinesisClient kinesisClient, String tempDir, ConcurrentHashMap<String, Boolean> cachedFiles)
 	{
-		this.s3Client = s3Client;
+		ClientConfiguration clientConfig = new ClientConfiguration();
+		clientConfig.setMaxConnections(1000);
+		clientConfig.setSocketTimeout(60*1000);
+		this.s3Client = new AmazonS3Client(clientConfig);
 		this.kinesisClient = kinesisClient;
 		this.tempDir = tempDir;
 		this.cachedFiles = cachedFiles;
@@ -170,13 +174,36 @@ public class LambdaLocalExecutor extends Thread
 					String key     = prefix + "/" + folder + "/" + filename;
 					String outfile = tempDir + "/" + filename;
 		
+					// Download until success
 					logger.debug("Downloading " + outfile);
-					S3Object object = s3Client.getObject(new GetObjectRequest(bucket, key));
-					InputStream in = object.getObjectContent();
-					OutputStream out = new FileOutputStream(outfile);
-					IOUtils.copy(in, out);
-					in.close();
-					out.close();
+					boolean success = false;
+					while (!success)
+					{
+						try
+						{
+							S3Object object = s3Client.getObject(new GetObjectRequest(bucket, key));
+							InputStream in = object.getObjectContent();
+							OutputStream out = new FileOutputStream(outfile);
+		//					IOUtils.copy(in, out);
+		
+							int read = 0;
+							byte[] bytes = new byte[1024];
+							while ((read = in.read(bytes)) != -1) 
+							{
+								out.write(bytes, 0, read);
+							}
+							in.close();
+							out.close();
+							success = true;
+						} catch (Exception e1)
+						{
+							logger.error("Error downloading " + outfile);
+							logger.error("Retry after 200 ms... ");
+							System.out.println(e1.getMessage());
+							e1.printStackTrace();
+							sleep(200);
+						}
+					}
 					cachedFiles.put(filename, new Boolean(true));
 				}
 				else
@@ -258,8 +285,23 @@ public class LambdaLocalExecutor extends Thread
 				String file = tempDir + "/" + filename;
 
 				logger.debug("Uploading " + file);
-				s3Client.putObject(new PutObjectRequest(bucket, key, new File(file)));
-				cachedFiles.put(filename, new Boolean(true));
+				boolean success = false;
+				while (!success)
+				{
+					try
+					{
+						s3Client.putObject(new PutObjectRequest(bucket, key, new File(file)));
+						cachedFiles.put(filename, new Boolean(true));
+						success = true;
+					} catch (Exception e1)
+					{
+						logger.error("Error uploading " + file);
+						logger.error("Retry after 200 ms...");
+						System.out.println(e1.getMessage());
+						e1.printStackTrace();						
+						sleep(200);
+					}
+				}
 			} catch (Exception e)
 			{
 				System.out.println(e.getMessage());

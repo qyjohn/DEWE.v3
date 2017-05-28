@@ -16,7 +16,7 @@ public class LambdaWorkflowScheduler extends Thread
 {
 	public AmazonKinesisClient kinesisClient;
 	public AmazonSQSClient sqsClient = new AmazonSQSClient();
-	String jobStream, longStream, ackStream;
+	String jobStream, ackStream;
 	String longQueue;
 	List<Shard> ackShards = new ArrayList<Shard>();
 	Map<String, String> ackIterators = new HashMap<String, String>();
@@ -24,9 +24,12 @@ public class LambdaWorkflowScheduler extends Thread
 	LambdaWorkflow workflow;
 	String uuid, s3Bucket, s3Prefix;
 	boolean localExec, cleanUp, completed;
+	public int localPerc=0;
 	
 	LambdaLocalWorker worker;
 	final static Logger logger = Logger.getLogger(LambdaWorkflowScheduler.class);
+	
+	Date d1, d2;
 	
 	public LambdaWorkflowScheduler(String bucket, String prefix)
 	{
@@ -40,15 +43,14 @@ public class LambdaWorkflowScheduler extends Thread
 			longQueue = prop.getProperty("longQueue");
 			localExec = Boolean.parseBoolean(prop.getProperty("localExec"));
 			cleanUp   = Boolean.parseBoolean(prop.getProperty("cleanUp"));
+			localPerc = Integer.parseInt(prop.getProperty("localPerc"));
 	
 			// Each instance of WorkflowScheduler is a single thread, managing a single workflow.
 			// A workflow is represented by a UUID, and the ACK stream is named with the same UUID.
 			uuid = "DEWEv3-" + UUID.randomUUID().toString();
 			ackStream = uuid;
-			longStream = ackStream + "-Long-Jobs";
 			kinesisClient = new AmazonKinesisClient();
 			createStream(ackStream);	// The Kinesis stream to receive ACK messages 
-			createStream(longStream);	// The Kinesis stream to publish long running jobs 
 			listAckShards();
 	
 			s3Bucket = bucket;
@@ -58,7 +60,7 @@ public class LambdaWorkflowScheduler extends Thread
 			completed  = false;
 			
 			// Run one instance of the DeweWorker in the background
-			worker = new LambdaLocalWorker(longStream, cleanUp);
+			worker = new LambdaLocalWorker();
 			worker.start();
 		} catch (Exception e)
 		{
@@ -138,13 +140,9 @@ public class LambdaWorkflowScheduler extends Thread
 	}
 
 	
-	public void deleteStream(String stream)
-	{
-		kinesisClient.deleteStream(stream);	
-	}
-	
 	public void initialDispatch()
 	{
+		d1 = new Date();
 		logger.info("Begin workflow execution.");
 		for (WorkflowJob job : workflow.jobs.values())	
 		{
@@ -169,49 +167,39 @@ public class LambdaWorkflowScheduler extends Thread
 		if (job != null)
 		{
 			logger.info("Dispatching " + job.jobId + ":\t" + job.jobName);
-/*
-			byte[] bytes = job.jobXML.getBytes();
-			PutRecordRequest putRecord = new PutRecordRequest();
-			if (job.isLongJob)
+			boolean success = false;
+			while (!success)
 			{
-				putRecord.setStreamName(longStream);				
-			}
-			else
-			{
-				putRecord.setStreamName(jobStream);
-			}
-			putRecord.setPartitionKey(UUID.randomUUID().toString());
-			putRecord.setData(ByteBuffer.wrap(bytes));
-
-			try 
-			{
-				client.putRecord(putRecord);
-			} catch (Exception e) 
-			{
-				System.out.println(e.getMessage());
-				e.printStackTrace();	
-			}
-*/
-			try
-			{
-				if (job.isLongJob)
+				try
 				{
-					sqsClient.sendMessage(longQueue, job.jobXML);;				
-				}
-				else
+					if (job.isLongJob)
+					{
+						sqsClient.sendMessage(longQueue, job.jobXML);				
+					}
+					else
+					{
+						int rand = new Random().nextInt(100);
+						// Send localPerc% of jobs to the long queue for local execution
+						if (rand <= localPerc) 
+						{
+							sqsClient.sendMessage(longQueue, job.jobXML);
+						}
+						else
+						{
+							byte[] bytes = job.jobXML.getBytes();
+							PutRecordRequest putRecord = new PutRecordRequest();
+							putRecord.setStreamName(jobStream);
+							putRecord.setPartitionKey(UUID.randomUUID().toString());
+							putRecord.setData(ByteBuffer.wrap(bytes));
+							kinesisClient.putRecord(putRecord);
+						}
+					}
+					success = true;
+				} catch (Exception e) 
 				{
-					byte[] bytes = job.jobXML.getBytes();
-					PutRecordRequest putRecord = new PutRecordRequest();
-					putRecord.setStreamName(jobStream);
-					putRecord.setPartitionKey(UUID.randomUUID().toString());
-					putRecord.setData(ByteBuffer.wrap(bytes));
-					kinesisClient.putRecord(putRecord);
-				}
-				
-			} catch (Exception e) 
-			{
-				System.out.println(e.getMessage());
-				e.printStackTrace();	
+					System.out.println(e.getMessage());
+					e.printStackTrace();	
+				}				
 			}
 		}		
 	}
@@ -281,10 +269,12 @@ public class LambdaWorkflowScheduler extends Thread
 			}
 		}
 		logger.info("Workflow is now completed.");
+		d2 = new Date();
+		long seconds = (d2.getTime()-d1.getTime())/1000;
+		System.out.println("\n\nTotal execution time: " + seconds + " seconds.\n\n");
 
-		//delete the ackStream and the longString.
-		deleteStream(ackStream);
-		deleteStream(longStream);
+		// delete the ackStream
+		kinesisClient.deleteStream(ackStream);	
 		System.exit(0);
 	}
 
