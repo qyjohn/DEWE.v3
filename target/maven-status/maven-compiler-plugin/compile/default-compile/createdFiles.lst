@@ -5,6 +5,7 @@ net/qyjohn/dewev3/worker/LambdaLocalExecutor$Downloader.class
 net/qyjohn/dewev3/manager/GoogleWorkflowScheduler.class
 net/qyjohn/dewev3/manager/GoogleTransceiver.class
 net/qyjohn/dewev3/manager/WorkflowJob.class
+net/qyjohn/dewev3/manager/LambdaWorkflowScheduler$AckPuller.class
 net/qyjohn/dewev3/manager/LambdaWorkflowScheduler.class
 net/qyjohn/dewev3/worker/GoogleLocalExecutor.class
 net/qyjohn/dewev3/worker/LambdaHandler$Uploader.class

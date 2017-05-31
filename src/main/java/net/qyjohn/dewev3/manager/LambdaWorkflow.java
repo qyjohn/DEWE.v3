@@ -19,7 +19,7 @@ import org.apache.log4j.Logger;
 public class LambdaWorkflow
 {
 	public ConcurrentHashMap<String, WorkflowJob> jobs;
-	public String uuid, bucket, prefix;
+	public String uuid, bucket, prefix, ackQueue;
 	public SAXReader reader;
 	public Document document;
 	List<String> longJobs = new ArrayList<String>();
@@ -34,11 +34,12 @@ public class LambdaWorkflow
 	 *
 	 */
 	 
-	public LambdaWorkflow(String uuid, String bucket, String prefix, boolean localExec)
+	public LambdaWorkflow(String uuid, String bucket, String prefix, boolean localExec, String ackQueue)
 	{
 		this.uuid = uuid;
 		this.localExec = localExec;
-		
+		this.ackQueue  = ackQueue;
+
 		this.bucket = bucket;
 		this.prefix = prefix;
 		client = new AmazonS3Client();
@@ -261,6 +262,7 @@ public class LambdaWorkflow
 		root.addAttribute("binFiles", binFiles);		
 		root.addAttribute("inFiles",  inFiles);		
 		root.addAttribute("outFiles", outFiles);		
+		root.addAttribute("ackQueue", ackQueue);		
 		
         return document.asXML();
       }
@@ -299,4 +301,5 @@ public class LambdaWorkflow
 	}
 
 }
+
 

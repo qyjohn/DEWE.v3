@@ -14,10 +14,10 @@ import org.apache.log4j.Logger;
 
 public class LambdaWorkflowScheduler extends Thread
 {
-	public AmazonKinesisClient kinesisClient;
+	public AmazonKinesisClient kinesisClient = new AmazonKinesisClient();
 	public AmazonSQSClient sqsClient = new AmazonSQSClient();
 	String jobStream, ackStream;
-	String longQueue;
+	String longQueue, ackQueue;
 	List<Shard> ackShards = new ArrayList<Shard>();
 	Map<String, String> ackIterators = new HashMap<String, String>();
 
@@ -35,28 +35,24 @@ public class LambdaWorkflowScheduler extends Thread
 	{
 		try
 		{
-			// The Kinesis stream to publish jobs
+			// System Properties
 			Properties prop = new Properties();
 			InputStream input = new FileInputStream("config.properties");
 			prop.load(input);
 			jobStream = prop.getProperty("jobStream");
 			longQueue = prop.getProperty("longQueue");
+			ackQueue = prop.getProperty("ackQueue");
 			localExec = Boolean.parseBoolean(prop.getProperty("localExec"));
 			cleanUp   = Boolean.parseBoolean(prop.getProperty("cleanUp"));
 			localPerc = Integer.parseInt(prop.getProperty("localPerc"));
 	
-			// Each instance of WorkflowScheduler is a single thread, managing a single workflow.
-			// A workflow is represented by a UUID, and the ACK stream is named with the same UUID.
-			uuid = "DEWEv3-" + UUID.randomUUID().toString();
-			ackStream = uuid;
-			kinesisClient = new AmazonKinesisClient();
-			createStream(ackStream);	// The Kinesis stream to receive ACK messages 
-			listAckShards();
-	
-			s3Bucket = bucket;
-			s3Prefix = prefix;			
+			// House keeping
+			purgeQueue();
+
+			// Parsing workflow definitions
 			logger.info("Parsing workflow definitions...");
-			workflow = new LambdaWorkflow(uuid, s3Bucket, s3Prefix, localExec);
+			uuid = UUID.randomUUID().toString();
+			workflow = new LambdaWorkflow(uuid, bucket, prefix, localExec, ackQueue);
 			completed  = false;
 			
 			// Run one instance of the DeweWorker in the background
@@ -69,76 +65,6 @@ public class LambdaWorkflowScheduler extends Thread
 		}
 	}
 	
-
-	public void createStream(String stream)
-	{
-		// Creating the stream
-		CreateStreamRequest createStreamRequest = new CreateStreamRequest();
-		createStreamRequest.setStreamName(stream);
-		createStreamRequest.setShardCount(1);
-		kinesisClient.createStream(createStreamRequest);
-
-		DescribeStreamRequest describeStreamRequest = new DescribeStreamRequest();
-		describeStreamRequest.setStreamName(stream);
-		long startTime = System.currentTimeMillis();
-		long endTime = startTime + ( 10 * 60 * 1000 );
-		while ( System.currentTimeMillis() < endTime ) 
-		{
-			try 
-			{
-				logger.info("Waiting for stream " + stream + " to become active...");
-				Thread.sleep(10 * 1000);
-				DescribeStreamResult describeStreamResponse = kinesisClient.describeStream( describeStreamRequest );
-				String streamStatus = describeStreamResponse.getStreamDescription().getStreamStatus();
-				if ( streamStatus.equals( "ACTIVE" ) ) 
-				{
-					break;
-				}
-			} catch (Exception e ) {}
-		}
-		
-		if ( System.currentTimeMillis() >= endTime ) 
-		{
-			logger.error("Stream " + stream + " never becomes active. Exiting...");
-			System.exit(0);
-		}
-	}
-
-	public void listAckShards()
-	{
-		DescribeStreamRequest describeStreamRequest = new DescribeStreamRequest();
-		describeStreamRequest.setStreamName(ackStream);
-		String exclusiveStartShardId = null;
-		do 
-		{
-			describeStreamRequest.setExclusiveStartShardId( exclusiveStartShardId );
-			DescribeStreamResult describeStreamResult = kinesisClient.describeStream( describeStreamRequest );
-			ackShards.addAll( describeStreamResult.getStreamDescription().getShards() );
-			if (describeStreamResult.getStreamDescription().getHasMoreShards() && ackShards.size() > 0) 
-			{
-				exclusiveStartShardId = ackShards.get(ackShards.size() - 1).getShardId();
-			} 
-			else 
-			{
-				exclusiveStartShardId = null;
-			}
-		} while ( exclusiveStartShardId != null );
-
-		for (Shard shard : ackShards)
-		{
-			String shardId = shard.getShardId();
-			String shardIterator;
-			GetShardIteratorRequest getShardIteratorRequest = new GetShardIteratorRequest();
-			getShardIteratorRequest.setStreamName(ackStream);
-			getShardIteratorRequest.setShardId(shardId);
-			getShardIteratorRequest.setShardIteratorType("TRIM_HORIZON");
-
-			GetShardIteratorResult getShardIteratorResult = kinesisClient.getShardIterator(getShardIteratorRequest);
-			shardIterator = getShardIteratorResult.getShardIterator();			
-			ackIterators.put(shardId, shardIterator);
-		}
-	}
-
 	
 	public void initialDispatch()
 	{
@@ -180,7 +106,7 @@ public class LambdaWorkflowScheduler extends Thread
 					{
 						int rand = new Random().nextInt(100);
 						// Send localPerc% of jobs to the long queue for local execution
-						if (rand <= localPerc) 
+						if (rand < localPerc) 
 						{
 							sqsClient.sendMessage(longQueue, job.jobXML);
 						}
@@ -248,35 +174,70 @@ public class LambdaWorkflowScheduler extends Thread
 	{
 		while (!completed)
 		{
-			// Listen for ackStream for completed jobs and update job status
-			for (Shard shard : ackShards)
+			// Pulling the ackQueue
+			try
 			{
-				String shardId = shard.getShardId();
-				GetRecordsRequest getRecordsRequest = new GetRecordsRequest();
-				getRecordsRequest.setShardIterator(ackIterators.get(shardId));
-				getRecordsRequest.setLimit(100);
-
-				GetRecordsResult getRecordsResult = kinesisClient.getRecords(getRecordsRequest);
-				List<Record> records = getRecordsResult.getRecords();
-				for (Record record : records)
+				ReceiveMessageResult result = sqsClient.receiveMessage(ackQueue);
+				for (Message message : result.getMessages())
 				{
-					String job = new String(record.getData().array());
+					String job = message.getBody();
 					logger.info(job + " is now completed.");
 					setJobAsComplete(job);
-				}
-
-				ackIterators.put(shardId, getRecordsResult.getNextShardIterator());
+					sqsClient.deleteMessage(ackQueue, message.getReceiptHandle());
+				}				
+			} catch (Exception e)
+			{
 			}
 		}
 		logger.info("Workflow is now completed.");
+
 		d2 = new Date();
 		long seconds = (d2.getTime()-d1.getTime())/1000;
 		System.out.println("\n\nTotal execution time: " + seconds + " seconds.\n\n");
 
 		// delete the ackStream
-		kinesisClient.deleteStream(ackStream);	
 		System.exit(0);
 	}
+	
+	
+	class AckPuller extends Thread
+	{
+		public void run()
+		{
+			AmazonSQSClient c = new AmazonSQSClient();
+
+			while (!completed)
+			{
+				// Pulling the ackQueue
+				try
+				{
+					ReceiveMessageResult result = c.receiveMessage(ackQueue);
+					for (Message message : result.getMessages())
+					{
+						String job = message.getBody();
+						logger.info(job + " is now completed.");
+						setJobAsComplete(job);
+						c.deleteMessage(ackQueue, message.getReceiptHandle());
+					}				
+				} catch (Exception e)
+				{
+				}				
+			}	
+		}		
+	}
+	public void purgeQueue()
+	{
+			try
+			{
+				PurgeQueueRequest req1 = new PurgeQueueRequest(longQueue);
+				sqsClient.purgeQueue(req1);
+				PurgeQueueRequest req2 = new PurgeQueueRequest(ackQueue);
+				sqsClient.purgeQueue(req2);
+			} catch (Exception e)
+			{
+			}
+	}
+
 
 	public static void main(String[] args)
 	{

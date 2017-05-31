@@ -25,13 +25,15 @@ public class LambdaLocalWorker extends Thread
 	public AmazonSQSClient sqsClient = new AmazonSQSClient();
 	public AmazonKinesisClient kinesisClient;
 	public String tempDir = "/tmp";
-	public String longQueue;
+	public String longQueue, ackQueue;
 	public ConcurrentHashMap<String, Boolean> cachedFiles;
 	volatile boolean completed = false, cleanUp = false;
 //	String longStream;
 //	List<Shard> longShards = new ArrayList<Shard>();
 //	Map<String, String> longIterators = new HashMap<String, String>();
 	Stack<String> jobStack = new Stack<String>();
+	Stack<String> uploadStack = new Stack<String>();
+	Stack<String> downloadStack = new Stack<String>();
 	// Logging
 	final static Logger logger = Logger.getLogger(LambdaLocalWorker.class);
 
@@ -52,6 +54,7 @@ public class LambdaLocalWorker extends Thread
 			InputStream input = new FileInputStream("config.properties");
 			prop.load(input);
 			longQueue = prop.getProperty("longQueue");
+			ackQueue  = prop.getProperty("ackQueue");
 
 			this.cleanUp = true;
 			tempDir = "/tmp/" + UUID.randomUUID().toString();
@@ -65,7 +68,7 @@ public class LambdaLocalWorker extends Thread
 			LambdaLocalExecutor executors[] = new LambdaLocalExecutor[nProc];
 			for (int i=0; i<nProc; i++)
 			{
-				executors[i] = new LambdaLocalExecutor(kinesisClient, tempDir, cachedFiles);
+				executors[i] = new LambdaLocalExecutor(ackQueue, tempDir, cachedFiles);
 				executors[i].setJobStack(jobStack);
 				executors[i].start();
 			}

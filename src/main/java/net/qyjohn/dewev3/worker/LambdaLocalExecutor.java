@@ -11,6 +11,9 @@ import com.amazonaws.services.s3.*;
 import com.amazonaws.services.s3.model.*;
 import com.amazonaws.services.kinesis.*;
 import com.amazonaws.services.kinesis.model.*;
+import com.amazonaws.services.sqs.*;
+import com.amazonaws.services.sqs.model.*;
+
 import org.dom4j.*;
 import org.dom4j.io.SAXReader;
 import org.apache.commons.io.IOUtils;
@@ -19,8 +22,10 @@ import org.apache.log4j.Logger;
 public class LambdaLocalExecutor extends Thread
 {
 	// Common components
+	public String ackQueue;
 	public AmazonS3Client s3Client;
 	public AmazonKinesisClient kinesisClient;
+	public AmazonSQSClient sqsClient = new AmazonSQSClient();
 	public String workflow, bucket, prefix, jobId, jobName, command;
 	public String tempDir = "/tmp";
 	public ConcurrentHashMap<String, Boolean> cachedFiles;
@@ -30,15 +35,15 @@ public class LambdaLocalExecutor extends Thread
 	// Logging
 	final static Logger logger = Logger.getLogger(LambdaLocalExecutor.class);
 	 
-	public LambdaLocalExecutor(AmazonKinesisClient kinesisClient, String tempDir, ConcurrentHashMap<String, Boolean> cachedFiles)
+	public LambdaLocalExecutor(String ackQueue, String tempDir, ConcurrentHashMap<String, Boolean> cachedFiles)
 	{
+		this.ackQueue = ackQueue;
+		this.tempDir = tempDir;
+		this.cachedFiles = cachedFiles;
 		ClientConfiguration clientConfig = new ClientConfiguration();
 		clientConfig.setMaxConnections(1000);
 		clientConfig.setSocketTimeout(60*1000);
 		this.s3Client = new AmazonS3Client(clientConfig);
-		this.kinesisClient = kinesisClient;
-		this.tempDir = tempDir;
-		this.cachedFiles = cachedFiles;
 		caching = true;
 	}
 	
@@ -72,10 +77,10 @@ public class LambdaLocalExecutor extends Thread
 
 	public void executeJob(String jobXML) 
 	{
+
 		try
 		{
 			Element job = DocumentHelper.parseText(jobXML).getRootElement();
-			workflow = job.attributeValue("workflow");
 			bucket   = job.attributeValue("bucket");
 			prefix   = job.attributeValue("prefix");
 			jobId    = job.attributeValue("id");
@@ -95,13 +100,6 @@ public class LambdaLocalExecutor extends Thread
 
 			// Upload output files
 			upload(job.attribute("outFiles").getValue());
-/*			StringTokenizer st = new StringTokenizer(job.attribute("outFiles").getValue());
-			while (st.hasMoreTokens()) 
-			{
-				String f = st.nextToken();
-				upload(f);
-			}
-*/
 		} catch (Exception e)
 		{
 			System.out.println(jobXML);
@@ -110,7 +108,7 @@ public class LambdaLocalExecutor extends Thread
 		}
 
 		// Acknowledge the job to be completed
-		ackJob(workflow, jobId);
+		sqsClient.sendMessage(ackQueue, jobId);
 	}
 
 	
@@ -184,7 +182,6 @@ public class LambdaLocalExecutor extends Thread
 							S3Object object = s3Client.getObject(new GetObjectRequest(bucket, key));
 							InputStream in = object.getObjectContent();
 							OutputStream out = new FileOutputStream(outfile);
-		//					IOUtils.copy(in, out);
 		
 							int read = 0;
 							byte[] bytes = new byte[1024];
@@ -198,10 +195,10 @@ public class LambdaLocalExecutor extends Thread
 						} catch (Exception e1)
 						{
 							logger.error("Error downloading " + outfile);
-							logger.error("Retry after 200 ms... ");
+							logger.error("Retry after 1000 ms... ");
 							System.out.println(e1.getMessage());
 							e1.printStackTrace();
-							sleep(200);
+							sleep(1000);
 						}
 					}
 					cachedFiles.put(filename, new Boolean(true));
@@ -296,10 +293,10 @@ public class LambdaLocalExecutor extends Thread
 					} catch (Exception e1)
 					{
 						logger.error("Error uploading " + file);
-						logger.error("Retry after 200 ms...");
+						logger.error("Retry after 1000 ms...");
 						System.out.println(e1.getMessage());
 						e1.printStackTrace();						
-						sleep(200);
+						sleep(1000);
 					}
 				}
 			} catch (Exception e)
