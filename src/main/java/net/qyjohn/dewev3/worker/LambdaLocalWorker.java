@@ -27,10 +27,7 @@ public class LambdaLocalWorker extends Thread
 	public String tempDir = "/tmp";
 	public String longQueue, ackQueue;
 	public ConcurrentHashMap<String, Boolean> cachedFiles;
-	volatile boolean completed = false, cleanUp = false;
-//	String longStream;
-//	List<Shard> longShards = new ArrayList<Shard>();
-//	Map<String, String> longIterators = new HashMap<String, String>();
+	volatile boolean completed = false;
 	Stack<String> jobStack = new Stack<String>();
 	Stack<String> uploadStack = new Stack<String>();
 	Stack<String> downloadStack = new Stack<String>();
@@ -45,20 +42,18 @@ public class LambdaLocalWorker extends Thread
 	 *
 	 */
 
-	public LambdaLocalWorker()
+	public LambdaLocalWorker(String tempDir)
 	{
 		try
 		{
+			this.tempDir = tempDir;
+
 			// The Kinesis stream to publish jobs
 			Properties prop = new Properties();
 			InputStream input = new FileInputStream("config.properties");
 			prop.load(input);
 			longQueue = prop.getProperty("longQueue");
 			ackQueue  = prop.getProperty("ackQueue");
-
-			this.cleanUp = true;
-			tempDir = "/tmp/" + UUID.randomUUID().toString();
-			Process p = Runtime.getRuntime().exec("mkdir -p " + tempDir);
 
 			s3Client = new AmazonS3Client();
 			kinesisClient = new AmazonKinesisClient();
@@ -103,20 +98,6 @@ public class LambdaLocalWorker extends Thread
 			{
 			}
 		}
-
-		// Remove temp folder
-		if (cleanUp)
-		{
-			try
-			{
-				Process p = Runtime.getRuntime().exec("rm -Rf " + tempDir);
-				p.waitFor();
-			} catch (Exception e)
-			{
-				System.out.println(e.getMessage());
-				e.printStackTrace();
-			}		
-		}
 	}
 	
 	
@@ -135,7 +116,13 @@ public class LambdaLocalWorker extends Thread
 	{
 		try
 		{
-			LambdaLocalWorker worker = new LambdaLocalWorker();
+			// Create a temp folder for the execution environment
+			String tempDir = "/tmp/" + UUID.randomUUID().toString();
+			Process p = Runtime.getRuntime().exec("mkdir -p " + tempDir);
+			p.waitFor();
+
+			// Start the LambdaLocalWorker
+			LambdaLocalWorker worker = new LambdaLocalWorker(tempDir);
 			worker.start();
 			worker.join();			
 		} catch (Exception e)

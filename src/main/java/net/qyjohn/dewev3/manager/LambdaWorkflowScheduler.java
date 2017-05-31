@@ -22,7 +22,7 @@ public class LambdaWorkflowScheduler extends Thread
 	Map<String, String> ackIterators = new HashMap<String, String>();
 
 	LambdaWorkflow workflow;
-	String uuid, s3Bucket, s3Prefix;
+	String uuid, s3Bucket, s3Prefix, tempDir;
 	boolean localExec, cleanUp, completed;
 	public int localPerc=0;
 	
@@ -56,7 +56,10 @@ public class LambdaWorkflowScheduler extends Thread
 			completed  = false;
 			
 			// Run one instance of the DeweWorker in the background
-			worker = new LambdaLocalWorker();
+			tempDir = "/tmp/" + UUID.randomUUID().toString();
+			Process p = Runtime.getRuntime().exec("mkdir -p " + tempDir);
+			p.waitFor();
+			worker = new LambdaLocalWorker(tempDir);
 			worker.start();
 		} catch (Exception e)
 		{
@@ -195,7 +198,19 @@ public class LambdaWorkflowScheduler extends Thread
 		long seconds = (d2.getTime()-d1.getTime())/1000;
 		System.out.println("\n\nTotal execution time: " + seconds + " seconds.\n\n");
 
-		// delete the ackStream
+		// delete the temp foler
+		if (cleanUp)
+		{
+			try
+			{
+				Process p = Runtime.getRuntime().exec("rm -Rf " + tempDir);
+				p.waitFor();
+			} catch (Exception e)
+			{
+				System.out.println(e.getMessage());
+				e.printStackTrace();	
+			}
+		}
 		System.exit(0);
 	}
 	
