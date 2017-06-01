@@ -13,10 +13,12 @@ public class GoogleWorkflowScheduler extends Thread
 	GoogleTransceiver transceiver;
 	String uuid, gsBucket, gsPrefix;
 	boolean localExec, cleanUp, completed;
+	public int localPerc=0;
 	
 	GoogleLocalWorker worker;
 	final static Logger logger = Logger.getLogger(GoogleWorkflowScheduler.class);
-	
+	Date d1, d2;
+
 	public GoogleWorkflowScheduler(String bucket, String prefix)
 	{
 		try
@@ -28,6 +30,7 @@ public class GoogleWorkflowScheduler extends Thread
 			String jobTopic  = prop.getProperty("jobTopic");
 			localExec = Boolean.parseBoolean(prop.getProperty("localExec"));
 			cleanUp   = Boolean.parseBoolean(prop.getProperty("cleanUp"));
+			localPerc = Integer.parseInt(prop.getProperty("localPerc"));
 
 			// Each instance of WorkflowScheduler is a single thread, managing a single workflow.
 			// A workflow is represented by a UUID, and the ACK stream is named with the same UUID.
@@ -41,7 +44,7 @@ public class GoogleWorkflowScheduler extends Thread
 			completed  = false;
 			
 			// Run one instance of the DeweWorker in the background
-			worker = new GoogleLocalWorker(uuid, cleanUp);
+			worker = new GoogleLocalWorker(uuid, cleanUp, localPerc);
 			worker.start();
 		} catch (Exception e)
 		{
@@ -53,6 +56,7 @@ public class GoogleWorkflowScheduler extends Thread
 	
 	public void initialDispatch()
 	{
+		d1 = new Date();
 		logger.info("Begin workflow execution.");
 		for (WorkflowJob job : workflow.jobs.values())	
 		{
@@ -124,6 +128,9 @@ public class GoogleWorkflowScheduler extends Thread
 			}
 		}
 		logger.info("Workflow is now completed.");
+		d2 = new Date();
+		long seconds = (d2.getTime()-d1.getTime())/1000;
+		System.out.println("\n\nTotal execution time: " + seconds + " seconds.\n\n");
 
 		//delete the ackStream and the longString.
 		transceiver.cleanUp();

@@ -22,6 +22,7 @@ public class GoogleTransceiver
 	public Subscriber ackReceiver;
 	public Stack<String> ackStack = new Stack<String>();
 	final static Logger logger = Logger.getLogger(GoogleTransceiver.class);
+	public int localPerc = 0;
 	
 	/**
 	 *
@@ -30,10 +31,13 @@ public class GoogleTransceiver
 	 *
 	 */
 
-	public GoogleTransceiver(String uuid, String topic)
+	public GoogleTransceiver(String uuid, String topic, int localPerc)
 	{
 		try
 		{
+			// Local execution percentage
+			this.localPerc = localPerc;
+			
 			// Topic names
 			jobTopic  = TopicName.create(projectId, topic);
             ackTopic  = TopicName.create(projectId, uuid);
@@ -123,7 +127,16 @@ public class GoogleTransceiver
 			}
 			else
 			{
-				jobSender.publish(message);
+				int rand = new Random().nextInt(100);
+				// Send localPerc% of jobs to the long queue for local execution
+				if (rand < localPerc) 
+				{
+					longSender.publish(message);
+				}
+				else
+				{
+					jobSender.publish(message);
+				}
 			}
 		} catch (Exception e)
 		{
