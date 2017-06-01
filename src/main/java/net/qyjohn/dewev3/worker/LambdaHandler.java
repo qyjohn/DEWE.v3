@@ -33,6 +33,12 @@ public class LambdaHandler
 	final static Logger logger = Logger.getLogger(LambdaHandler.class);
 
 
+	public LambdaHandler()
+	{
+		runCommand("mkdir -p /tmp/bin", "/tmp");		
+	}
+	
+	
 	/**
 	 *
 	 * The only purpose of this handler is to clean up the /tmp disk space.
@@ -160,6 +166,7 @@ public class LambdaHandler
 			}
 		}		
 		
+/*
 		// "chmod +x" for all binaries
 		String cmd = "chmod +x";
 		for (String c : binFiles)
@@ -167,7 +174,7 @@ public class LambdaHandler
 			cmd = cmd + " " + c;
 		}
 		runCommand(cmd, tempDir);
-		
+*/		
 		// Parallel execution of commands using multiple threads
 		try
 		{
@@ -176,7 +183,7 @@ public class LambdaHandler
 				Executor executor[] = new Executor[commands.size()];
 				for (int i=0; i<commands.size(); i++)
 				{
-					executor[i] = new Executor(tempDir + "/" + commands.get(i));
+					executor[i] = new Executor("/tmp/bin/" + commands.get(i));
 					executor[i].start();
 				}
 				for (int i=0; i<commands.size(); i++)
@@ -251,7 +258,7 @@ public class LambdaHandler
 		{
 			logger.debug(command);
 
-			String env_path = "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:" + dir;
+			String env_path = "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/tmp/bin:" + dir;
 			String env_lib = "LD_LIBRARY_PATH=$LD_LIBRARY_PATH:" + dir;
 			String[] env = {env_path, env_lib};
 			Process p = Runtime.getRuntime().exec(command, env, new File(dir));
@@ -288,34 +295,51 @@ public class LambdaHandler
 			{
 				String key     = prefix + "/" + folder + "/" + filename;
 				String outfile = tempDir + "/" + filename;
-		
-				logger.debug("Downloading " + key + " to " + outfile);
-				boolean success = false;
-				while (!success)
+				if (folder.equals("bin"))
 				{
-					try
-					{
-						S3Object object = s3Client.getObject(new GetObjectRequest(bucket, key));
-						InputStream in = object.getObjectContent();
-						OutputStream out = new FileOutputStream(outfile);
+					outfile = "/tmp/bin/" + filename;
+				}
 		
-						int read = 0;
-						byte[] bytes = new byte[1024];
-						while ((read = in.read(bytes)) != -1) 
-						{
-							out.write(bytes, 0, read);
-						}
-						in.close();
-						out.close();
-						success = true;
-					} catch (Exception e1)
+				File f = new File(outfile);
+				if(!f.exists())
+				{
+					logger.info("Downloading " + key + " to " + outfile);
+					boolean success = false;
+					while (!success)
 					{
-						logger.error("Error downloading " + outfile);
-						logger.error("Retry after 200 ms... ");
-						System.out.println(e1.getMessage());
-						e1.printStackTrace();
-						sleep(200);
+						try
+						{
+							S3Object object = s3Client.getObject(new GetObjectRequest(bucket, key));
+							InputStream in = object.getObjectContent();
+							OutputStream out = new FileOutputStream(outfile);
+			
+							int read = 0;
+							byte[] bytes = new byte[1024];
+							while ((read = in.read(bytes)) != -1) 
+							{
+								out.write(bytes, 0, read);
+							}
+							in.close();
+							out.close();
+							success = true;
+						} catch (Exception e1)
+						{
+							logger.error("Error downloading " + outfile);
+							logger.error("Retry after 200 ms... ");
+							System.out.println(e1.getMessage());
+							e1.printStackTrace();
+							sleep(200);
+						}
 					}
+					
+					if (folder.equals("bin"))
+					{
+						runCommand("chmod +x " + outfile, "/tmp/bin");
+					}					
+				}
+				else
+				{
+					logger.info(outfile + " is already there.");					
 				}
 			} catch (Exception e)
 			{

@@ -35,7 +35,7 @@ public class GoogleWorkflowScheduler extends Thread
 			// Each instance of WorkflowScheduler is a single thread, managing a single workflow.
 			// A workflow is represented by a UUID, and the ACK stream is named with the same UUID.
 			uuid = "DEWEv3-" + UUID.randomUUID().toString();
-			transceiver = new GoogleTransceiver(uuid, jobTopic);
+			transceiver = new GoogleTransceiver(uuid, jobTopic, localPerc);
 
 			gsBucket = bucket;
 			gsPrefix = prefix;			
@@ -44,7 +44,7 @@ public class GoogleWorkflowScheduler extends Thread
 			completed  = false;
 			
 			// Run one instance of the DeweWorker in the background
-			worker = new GoogleLocalWorker(uuid, cleanUp, localPerc);
+			worker = new GoogleLocalWorker(uuid, cleanUp);
 			worker.start();
 		} catch (Exception e)
 		{
