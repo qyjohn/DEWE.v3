@@ -27,6 +27,8 @@ public class LambdaHandler
 	public String workflow, bucket, prefix, jobId, jobName, command;
 	// Cached binaries, input and output files
 	public String tempDir, ackQueue;
+	public String binDir  = "/tmp/dewe/bin";
+	public String workDir = "/tmp/dewe/workdir";
 	public HashMap<String, Boolean> cachedFiles;
 
 	// Logging
@@ -35,7 +37,7 @@ public class LambdaHandler
 
 	public LambdaHandler()
 	{
-		runCommand("mkdir -p /tmp/bin", "/tmp");		
+//		runCommand("mkdir -p /tmp/bin", "/tmp");		
 	}
 	
 	
@@ -60,8 +62,10 @@ public class LambdaHandler
 		sqsClient = new AmazonSQSClient();
 
 		// Create temporary execution folder
-		tempDir = "/tmp/" + UUID.randomUUID().toString();
-		runCommand("mkdir -p " + tempDir, "/tmp");
+//		tempDir = "/tmp/" + UUID.randomUUID().toString();
+//		runCommand("mkdir -p " + tempDir, "/tmp");
+		runCommand("mkdir -p " + binDir, "/tmp");
+		runCommand("mkdir -p " + workDir, "/tmp");
 		
 		// Create the data structure to store all job id's, commands, binaries, input and output files
 		List<KinesisEvent.KinesisEventRecord> records = event.getRecords();
@@ -183,7 +187,8 @@ public class LambdaHandler
 				Executor executor[] = new Executor[commands.size()];
 				for (int i=0; i<commands.size(); i++)
 				{
-					executor[i] = new Executor("/tmp/bin/" + commands.get(i));
+//					executor[i] = new Executor("/tmp/bin/" + commands.get(i));
+					executor[i] = new Executor(binDir + "/" + commands.get(i));
 					executor[i].start();
 				}
 				for (int i=0; i<commands.size(); i++)
@@ -241,8 +246,8 @@ public class LambdaHandler
 			e.printStackTrace();
 		}
 		
-		// Clean up temporary execution folder
-		runCommand("rm -Rf " + tempDir, "/tmp");
+		// Clean up temporary work folder to make space for the next invocation
+		runCommand("rm -Rf " + workDir, "/tmp");
 	}
 
 	
@@ -258,8 +263,8 @@ public class LambdaHandler
 		{
 			logger.debug(command);
 
-			String env_path = "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/tmp/bin:" + dir;
-			String env_lib = "LD_LIBRARY_PATH=$LD_LIBRARY_PATH:" + dir;
+			String env_path = "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:" + binDir;
+			String env_lib = "LD_LIBRARY_PATH=$LD_LIBRARY_PATH:" + binDir;
 			String[] env = {env_path, env_lib};
 			Process p = Runtime.getRuntime().exec(command, env, new File(dir));
 			BufferedReader in = new BufferedReader(new InputStreamReader(p.getInputStream()));
@@ -294,10 +299,10 @@ public class LambdaHandler
 			try
 			{
 				String key     = prefix + "/" + folder + "/" + filename;
-				String outfile = tempDir + "/" + filename;
+				String outfile = workDir + "/" + filename;
 				if (folder.equals("bin"))
 				{
-					outfile = "/tmp/bin/" + filename;
+					outfile = binDir + "/" + filename;
 				}
 		
 				File f = new File(outfile);
@@ -363,7 +368,7 @@ public class LambdaHandler
 			try
 			{
 				String key  = prefix + "/workdir/" + filename;
-				String file = tempDir + "/" + filename;
+				String file = workDir + "/" + filename;
 
 				logger.debug("Uploading " + file);
 				boolean success = false;
@@ -403,7 +408,7 @@ public class LambdaHandler
 		{
 			try
 			{
-				runCommand(cmd, tempDir);
+				runCommand(cmd, workDir);
 			} catch (Exception e)
 			{
 				System.out.println(e.getMessage());
