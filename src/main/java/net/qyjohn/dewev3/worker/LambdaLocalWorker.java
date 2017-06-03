@@ -26,6 +26,7 @@ public class LambdaLocalWorker extends Thread
 	public AmazonKinesisClient kinesisClient;
 	public String tempDir = "/tmp";
 	public String longQueue, ackQueue;
+	public boolean serialS3=false;
 	public ConcurrentHashMap<String, Boolean> cachedFiles;
 	volatile boolean completed = false;
 	Stack<String> jobStack = new Stack<String>();
@@ -54,6 +55,7 @@ public class LambdaLocalWorker extends Thread
 			prop.load(input);
 			longQueue = prop.getProperty("longQueue");
 			ackQueue  = prop.getProperty("ackQueue");
+			serialS3  = Boolean.parseBoolean(prop.getProperty("serialS3"));
 
 			s3Client = new AmazonS3Client();
 			kinesisClient = new AmazonKinesisClient();
@@ -63,7 +65,7 @@ public class LambdaLocalWorker extends Thread
 			LambdaLocalExecutor executors[] = new LambdaLocalExecutor[nProc];
 			for (int i=0; i<nProc; i++)
 			{
-				executors[i] = new LambdaLocalExecutor(ackQueue, tempDir, cachedFiles);
+				executors[i] = new LambdaLocalExecutor(ackQueue, tempDir, cachedFiles, serialS3);
 				executors[i].setJobStack(jobStack);
 				executors[i].start();
 			}

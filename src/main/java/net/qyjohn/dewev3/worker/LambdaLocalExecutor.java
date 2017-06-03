@@ -34,12 +34,14 @@ public class LambdaLocalExecutor extends Thread
 	public boolean caching = false;
 	// Logging
 	final static Logger logger = Logger.getLogger(LambdaLocalExecutor.class);
+	public boolean serialS3 = false;
 	 
-	public LambdaLocalExecutor(String ackQueue, String tempDir, ConcurrentHashMap<String, Boolean> cachedFiles)
+	public LambdaLocalExecutor(String ackQueue, String tempDir, ConcurrentHashMap<String, Boolean> cachedFiles, boolean serialS3)
 	{
 		this.ackQueue = ackQueue;
 		this.tempDir = tempDir;
 		this.cachedFiles = cachedFiles;
+		this.serialS3 = serialS3;
 		ClientConfiguration clientConfig = new ClientConfiguration();
 		clientConfig.setMaxConnections(1000);
 		clientConfig.setSocketTimeout(60*1000);
@@ -134,15 +136,25 @@ public class LambdaLocalExecutor extends Thread
 			// Download in a mutlti-thread fashion
 			if (!list.isEmpty())
 			{
-				Downloader downloader[] = new Downloader[list.size()];
-				for (int i=0; i<list.size(); i++)
+				if (!serialS3)
 				{
-					downloader[i] = new Downloader(folder, list.get(i));
-					downloader[i].start();
-				}
-				for (int i=0; i<list.size(); i++)
+					Downloader downloader[] = new Downloader[list.size()];
+					for (int i=0; i<list.size(); i++)
+					{
+						downloader[i] = new Downloader(folder, list.get(i));
+						downloader[i].start();
+					}
+					for (int i=0; i<list.size(); i++)
+					{
+						downloader[i].join();
+					}					
+				}	
+				else
 				{
-					downloader[i].join();
+					for (int i=0; i<list.size(); i++)
+					{
+						download_one(folder, list.get(i));
+					}					
 				}
 			}
 		} catch (Exception e)
@@ -152,18 +164,8 @@ public class LambdaLocalExecutor extends Thread
 		}
 	}
 
-	class Downloader extends Thread
+	public void download_one(String folder, String filename)
 	{
-		String folder, filename;
-
-		public Downloader(String folder, String filename)
-		{
-			this.folder = folder;
-			this.filename = filename;
-		}
-
-		public void run()
-		{
 			try
 			{
 				if (cachedFiles.get(filename) == null)
@@ -222,6 +224,21 @@ public class LambdaLocalExecutor extends Thread
 				System.out.println(e.getMessage());
 				e.printStackTrace();
 			}
+	}
+	
+	class Downloader extends Thread
+	{
+		String folder, filename;
+
+		public Downloader(String folder, String filename)
+		{
+			this.folder = folder;
+			this.filename = filename;
+		}
+
+		public void run()
+		{
+			download_one(folder, filename);
 		}
 	}
  
@@ -246,15 +263,25 @@ public class LambdaLocalExecutor extends Thread
 			// Upload in a mutlti-thread fashion
 			if (!list.isEmpty())
 			{
-				Uploader uploader[] = new Uploader[list.size()];
-				for (int i=0; i<list.size(); i++)
+				if (!serialS3)
 				{
-					uploader[i] = new Uploader(list.get(i));
-					uploader[i].start();
+					Uploader uploader[] = new Uploader[list.size()];
+					for (int i=0; i<list.size(); i++)
+					{
+						uploader[i] = new Uploader(list.get(i));
+						uploader[i].start();
+					}
+					for (int i=0; i<list.size(); i++)
+					{
+						uploader[i].join();
+					}					
 				}
-				for (int i=0; i<list.size(); i++)
+				else
 				{
-					uploader[i].join();
+					for (int i=0; i<list.size(); i++)
+					{
+						upload_one(list.get(i));
+					}		
 				}
 			}
 		} catch (Exception e)
@@ -264,17 +291,8 @@ public class LambdaLocalExecutor extends Thread
 		}
 	}
 	
-	class Uploader extends Thread
+	public void upload_one(String filename)
 	{
-		public String filename;
-
-		public Uploader(String filename)
-		{
-			this.filename = filename;
-		}
-
-		public void run()
-		{
 			try
 			{
 				cachedFiles.put(filename, new Boolean(false));
@@ -304,6 +322,20 @@ public class LambdaLocalExecutor extends Thread
 				System.out.println(e.getMessage());
 				e.printStackTrace();
 			}
+
+	}
+	class Uploader extends Thread
+	{
+		public String filename;
+
+		public Uploader(String filename)
+		{
+			this.filename = filename;
+		}
+
+		public void run()
+		{
+			upload_one(filename);
 		}
 
 	}
