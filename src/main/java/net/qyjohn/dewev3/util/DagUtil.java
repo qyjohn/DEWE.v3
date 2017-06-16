@@ -88,10 +88,70 @@ public class DagUtil
 		}
 	}
 
+	public void generateD3(String filename, String graph)
+	{
+		try
+		{
+			Document gexf = DocumentHelper.createDocument();
+			LinkedList<String> nodes = new LinkedList<String>();
+			LinkedList<String> edges = new LinkedList<String>();
+
+			// Populate the nodes
+			for (Element e : jobs)
+			{
+				String id = e.attributeValue("id");
+				String name = e.attributeValue("name");
+				String item = String.format("{id: '%s', value: {label: '%s'}}", id, name);
+				nodes.add(item);
+			}
+
+			// Populate the edges
+			int edgeId = 0;
+			for (Element e : children)
+			{
+				String target = e.attributeValue("ref");
+				List<Element> parents = e.elements("parent");
+				for (Element parent: parents)
+				{
+					String source = parent.attributeValue("ref");
+					String id = String.format("ID%06d", edgeId);
+					String item = String.format("{u: '%s', v: '%s'}", source, target);
+//					String item = String.format("{u: '%s', v: '%s', value: {label: '%s'}}", source, target, id);
+					edges.add(item);
+					edgeId++;	
+				}
+			}
+			
+			// Create pretty XML
+			FileWriter fw = new FileWriter(filename);
+			fw.write("loadData(\n");
+			fw.write("{\n");
+			fw.write("name: 'graph1',\n");
+			fw.write("nodes: [\n");
+			for (int i=0; i<nodes.size()-1; i++)
+			{
+				fw.write(nodes.get(i) + ",\n");
+			}
+			fw.write(nodes.get(nodes.size()-1) + "\n");
+			fw.write("],\nlinks:[\n");
+			for (int i=0; i<edges.size()-1; i++)
+			{
+				fw.write(edges.get(i) + ",\n");
+			}
+			fw.write(edges.get(edges.size()-1) + "\n");
+			fw.write("]\n}\n);");
+			fw.close();
+		} catch (Exception e)
+		{
+			System.out.println(e.getMessage());	
+			e.printStackTrace();
+		}
+	}
+
 	public static void main(String[] args)
 	{
 		DagUtil du = new DagUtil(args[0]);
-		du.generateGexf(args[1]);
+		du.generateD3(args[1], "test");
 	}
 
 }
