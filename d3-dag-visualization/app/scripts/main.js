@@ -15,7 +15,7 @@
             var graphElem = svgParent.children('g').get(0);
             var svg = d3.select(graphElem);
             var renderer = new dagreD3.Renderer();
-            var layout = dagreD3.layout().rankDir('LR');
+            var layout = dagreD3.layout().rankDir('TB');
             renderer.layout(layout).run(dagreD3.json.decode(nodes, links), svg.append('g'));
 
             // Adjust SVG height to content
