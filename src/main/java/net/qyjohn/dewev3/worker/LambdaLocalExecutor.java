@@ -4,6 +4,7 @@ import java.io.*;
 import java.nio.*;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import com.amazonaws.ClientConfiguration;
 import com.amazonaws.services.lambda.runtime.*; 
 import com.amazonaws.services.lambda.runtime.events.*;
@@ -29,29 +30,26 @@ public class LambdaLocalExecutor extends Thread
 	public String workflow, bucket, prefix, jobId, jobName, command;
 	public String tempDir = "/tmp";
 	public ConcurrentHashMap<String, Boolean> cachedFiles;
-	Stack<String> jobStack;
-	// Cache binary and input / output data
-	public boolean caching = false;
+	ConcurrentLinkedQueue<String> jobQueue;
+
 	// Logging
 	final static Logger logger = Logger.getLogger(LambdaLocalExecutor.class);
 	public boolean serialS3 = false;
 	 
-	public LambdaLocalExecutor(String ackQueue, String tempDir, ConcurrentHashMap<String, Boolean> cachedFiles, boolean serialS3)
+	public LambdaLocalExecutor(String ackQueue, String tempDir, ConcurrentHashMap<String, Boolean> cachedFiles)
 	{
 		this.ackQueue = ackQueue;
 		this.tempDir = tempDir;
 		this.cachedFiles = cachedFiles;
-		this.serialS3 = serialS3;
 		ClientConfiguration clientConfig = new ClientConfiguration();
 		clientConfig.setMaxConnections(1000);
 		clientConfig.setSocketTimeout(60*1000);
 		this.s3Client = new AmazonS3Client(clientConfig);
-		caching = true;
 	}
 	
-	public void setJobStack(Stack<String> stack)
+	public void setJobQueue(ConcurrentLinkedQueue<String> jobQueue)
 	{
-		this.jobStack = stack;
+		this.jobQueue  = jobQueue;
 	}
 
 	public void run()
@@ -60,10 +58,13 @@ public class LambdaLocalExecutor extends Thread
 		{
 			try
 			{
-				if (!jobStack.empty())
+				if (!jobQueue.isEmpty())
 				{
-					String jobXML = jobStack.pop();
-					executeJob(jobXML);
+					String jobXML = jobQueue.poll();
+					if (jobXML != null)
+					{
+						executeJob(jobXML);
+					}
 				}
 				else
 				{
@@ -136,8 +137,6 @@ public class LambdaLocalExecutor extends Thread
 			// Download in a mutlti-thread fashion
 			if (!list.isEmpty())
 			{
-				if (!serialS3)
-				{
 					Downloader downloader[] = new Downloader[list.size()];
 					for (int i=0; i<list.size(); i++)
 					{
@@ -148,14 +147,6 @@ public class LambdaLocalExecutor extends Thread
 					{
 						downloader[i].join();
 					}					
-				}	
-				else
-				{
-					for (int i=0; i<list.size(); i++)
-					{
-						download_one(folder, list.get(i));
-					}					
-				}
 			}
 		} catch (Exception e)
 		{
@@ -263,8 +254,6 @@ public class LambdaLocalExecutor extends Thread
 			// Upload in a mutlti-thread fashion
 			if (!list.isEmpty())
 			{
-				if (!serialS3)
-				{
 					Uploader uploader[] = new Uploader[list.size()];
 					for (int i=0; i<list.size(); i++)
 					{
@@ -275,14 +264,6 @@ public class LambdaLocalExecutor extends Thread
 					{
 						uploader[i].join();
 					}					
-				}
-				else
-				{
-					for (int i=0; i<list.size(); i++)
-					{
-						upload_one(list.get(i));
-					}		
-				}
 			}
 		} catch (Exception e)
 		{

@@ -17,16 +17,17 @@ public class LambdaWorkflowScheduler extends Thread
 	public AmazonKinesisClient kinesisClient = new AmazonKinesisClient();
 	public AmazonSQSClient sqsClient = new AmazonSQSClient();
 	String jobStream, ackStream;
-	String longQueue, ackQueue;
+	String longQueue, ackQueue, deweComm;
 	List<Shard> ackShards = new ArrayList<Shard>();
 	Map<String, String> ackIterators = new HashMap<String, String>();
 
 	LambdaWorkflow workflow;
 	String uuid, s3Bucket, s3Prefix, tempDir;
 	boolean localExec, cleanUp, completed;
+	public String caching = "false";
 	public int localPerc=0;
 	
-	LambdaLocalWorker worker;
+	LambdaLocalWorkerV2 worker;
 	final static Logger logger = Logger.getLogger(LambdaWorkflowScheduler.class);
 	
 	Date d1, d2;
@@ -59,7 +60,7 @@ public class LambdaWorkflowScheduler extends Thread
 			tempDir = "/tmp/" + UUID.randomUUID().toString();
 			Process p = Runtime.getRuntime().exec("mkdir -p " + tempDir);
 			p.waitFor();
-			worker = new LambdaLocalWorker(tempDir);
+			worker = new LambdaLocalWorkerV2(tempDir);
 			worker.start();
 		} catch (Exception e)
 		{

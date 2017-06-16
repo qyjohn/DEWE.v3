@@ -4,6 +4,7 @@ import java.io.*;
 import java.nio.*;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import com.amazonaws.ClientConfiguration;
 import com.amazonaws.services.lambda.runtime.*; 
 import com.amazonaws.services.lambda.runtime.events.*;
@@ -21,15 +22,15 @@ import com.amazonaws.services.sqs.model.*;
 public class LambdaLocalWorker extends Thread
 {
 	// Common components
+	int nProc = 1;
 	public AmazonS3Client s3Client;
 	public AmazonSQSClient sqsClient = new AmazonSQSClient();
 	public AmazonKinesisClient kinesisClient;
 	public String tempDir = "/tmp";
 	public String longQueue, ackQueue;
-	public boolean serialS3=false;
 	public ConcurrentHashMap<String, Boolean> cachedFiles;
 	volatile boolean completed = false;
-	Stack<String> jobStack = new Stack<String>();
+	ConcurrentLinkedQueue<String> jobQueue = new ConcurrentLinkedQueue<String>();
 	Stack<String> uploadStack = new Stack<String>();
 	Stack<String> downloadStack = new Stack<String>();
 	// Logging
@@ -55,18 +56,17 @@ public class LambdaLocalWorker extends Thread
 			prop.load(input);
 			longQueue = prop.getProperty("longQueue");
 			ackQueue  = prop.getProperty("ackQueue");
-			serialS3  = Boolean.parseBoolean(prop.getProperty("serialS3"));
 
 			s3Client = new AmazonS3Client();
 			kinesisClient = new AmazonKinesisClient();
-
 			cachedFiles = new ConcurrentHashMap<String, Boolean>();
-			int nProc = Runtime.getRuntime().availableProcessors();
+			
+			nProc = Runtime.getRuntime().availableProcessors();
 			LambdaLocalExecutor executors[] = new LambdaLocalExecutor[nProc];
 			for (int i=0; i<nProc; i++)
 			{
-				executors[i] = new LambdaLocalExecutor(ackQueue, tempDir, cachedFiles, serialS3);
-				executors[i].setJobStack(jobStack);
+				executors[i] = new LambdaLocalExecutor(ackQueue, tempDir, cachedFiles);
+				executors[i].setJobQueue(jobQueue);
 				executors[i].start();
 			}
 		} catch (Exception e)
@@ -84,20 +84,33 @@ public class LambdaLocalWorker extends Thread
 	 
 	public void run()
 	{
+//		int threshold = (int) Math.ceil(nProc/2);
+		int threshold = 2 * nProc;
+		
 		while (!completed)
 		{
 			try
 			{
-				ReceiveMessageResult result = sqsClient.receiveMessage(longQueue);
-				for (Message message : result.getMessages())
+//				if (jobQueue.size() < threshold)
+				if (jobQueue.isEmpty())
 				{
-					String jobXML = message.getBody();
-					logger.debug(jobXML);
-					jobStack.push(jobXML);
-					sqsClient.deleteMessage(longQueue, message.getReceiptHandle());
-				}				
+					ReceiveMessageResult result = sqsClient.receiveMessage(longQueue);
+					for (Message message : result.getMessages())
+					{
+						String jobXML = message.getBody();
+						logger.debug(jobXML);
+						jobQueue.add(jobXML);
+						sqsClient.deleteMessage(longQueue, message.getReceiptHandle());
+					}									
+				}
+				else
+				{
+					sleep(200);
+				}
 			} catch (Exception e)
 			{
+				System.out.println(e.getMessage());
+				e.printStackTrace();			
 			}
 		}
 	}
