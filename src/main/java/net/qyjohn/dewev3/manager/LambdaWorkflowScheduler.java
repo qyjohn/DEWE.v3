@@ -12,6 +12,7 @@ import com.amazonaws.services.sqs.model.*;
 import net.qyjohn.dewev3.worker.*;
 import org.apache.log4j.Logger;
 
+
 public class LambdaWorkflowScheduler extends Thread
 {
 	public AmazonKinesisClient kinesisClient = new AmazonKinesisClient();
@@ -23,10 +24,11 @@ public class LambdaWorkflowScheduler extends Thread
 
 	LambdaWorkflow workflow;
 	String uuid, s3Bucket, s3Prefix, tempDir;
-	boolean localExec, cleanUp, completed;
+	boolean localExec, cleanUp, completed,change=false;
 	public String caching = "false";
-	public int localPerc=0;
-	
+	public int localPerc=0, i=0,n=30;
+	boolean flag=false;
+String[] a=new String[n];
 	LambdaLocalWorkerV2 worker;
 	final static Logger logger = Logger.getLogger(LambdaWorkflowScheduler.class);
 	
@@ -72,14 +74,22 @@ public class LambdaWorkflowScheduler extends Thread
 	
 	public void initialDispatch()
 	{
+		for(int i=0;i<n;++i)a[i]=UUID.randomUUID().toString();
 		d1 = new Date();
 		logger.info("Begin workflow execution.");
 		for (WorkflowJob job : workflow.jobs.values())	
 		{
 			if (job.ready)
 			{
-				dispatchJob(job.jobId);
+				dispatchJob(job.jobId,a[i]);
+				job.first=true;
+//System.out.println(job.jobId+"    "+a[i]);
+i++;
+if (i==n) i=0;
+                       
+
 			}
+			
 		}	
 	}
 	
@@ -90,7 +100,7 @@ public class LambdaWorkflowScheduler extends Thread
 	 *
 	 */
 	 
-	public void dispatchJob(String id)
+	public void dispatchJob(String id, String u)
 	{
 		WorkflowJob job = workflow.jobs.get(id);
 
@@ -118,8 +128,9 @@ public class LambdaWorkflowScheduler extends Thread
 						{
 							byte[] bytes = job.jobXML.getBytes();
 							PutRecordRequest putRecord = new PutRecordRequest();
+							//putRecord.setSequenceNumberForOrdering(putRecord.getSequenceNumberForOrdering());
 							putRecord.setStreamName(jobStream);
-							putRecord.setPartitionKey(UUID.randomUUID().toString());
+							putRecord.setPartitionKey(u);
 							putRecord.setData(ByteBuffer.wrap(bytes));
 							kinesisClient.putRecord(putRecord);
 						}
@@ -144,21 +155,59 @@ public class LambdaWorkflowScheduler extends Thread
 	public void setJobAsComplete(String id)
 	{		
 		WorkflowJob job = workflow.jobs.get(id);
+		
 
 		if (job != null)
 		{
+			if(job.schedule==true || job.first==true) {
+				
 			// Get a list of the children jobs
 			for (String child_id : job.childrenJobs) 
 			{
+				flag=false;
 				// Get a list of the jobs depending on a particular output file
 				WorkflowJob childJob = workflow.jobs.get(child_id);
 				// Remove this depending parent job
+				
+				//	if(childJob.countParent(id)!=-1) {
+						
 				childJob.removeParent(id);
 				if (childJob.ready)
 				{
-					dispatchJob(childJob.jobId);
+				        dispatchJob(childJob.jobId,a[i]);
+					flag=true;
+change=true;
+//System.out.println(childJob.jobId+"     "+a[i]);
+					
 				}
+				//	}
+					
+				//////!!!!!!!!!!!!!!!!!!!!!
+				if (flag==true) {
+				for (String child_id1 : childJob.childrenJobs) 
+				{
+					
+					// Get a list of the jobs depending on a particular output file
+					WorkflowJob childJob1 = workflow.jobs.get(child_id1);
+					// Remove this depending parent job
+					childJob1.checkParent(child_id);
+					if (childJob1.ready)
+					{
+						dispatchJob(childJob1.jobId,a[i]);
+//System.out.println(childJob1.jobId+"     "+a[i]);
+						
+					}
+					
+				}
+
+				}
+				/////!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+if(change==true){
+	i++;
+	if (i==n) i=0;}
+change=false;
 			}
+			}		
 			workflow.jobs.remove(id);
 		}	
 		
@@ -270,4 +319,3 @@ public class LambdaWorkflowScheduler extends Thread
 	}
 
 }
-
